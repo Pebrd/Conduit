@@ -13,6 +13,7 @@ class OAuthRepository(private val client: HttpClient) {
 
     suspend fun exchangeCodeForSpotifyTokens(
         clientId: String,
+        clientSecret: String? = null,
         code: String,
         codeVerifier: String,
         redirectUri: String
@@ -25,6 +26,9 @@ class OAuthRepository(private val client: HttpClient) {
                     append("code", code)
                     append("redirect_uri", redirectUri)
                     append("client_id", clientId)
+                    if (clientSecret != null && clientSecret.isNotBlank()) {
+                        append("client_secret", clientSecret)
+                    }
                     append("code_verifier", codeVerifier)
                 }
             )
@@ -41,6 +45,7 @@ class OAuthRepository(private val client: HttpClient) {
 
     suspend fun exchangeCodeForTidalTokens(
         clientId: String,
+        clientSecret: String? = null,
         code: String,
         codeVerifier: String,
         redirectUri: String
@@ -53,6 +58,9 @@ class OAuthRepository(private val client: HttpClient) {
                     append("code", code)
                     append("redirect_uri", redirectUri)
                     append("client_id", clientId)
+                    if (clientSecret != null && clientSecret.isNotBlank()) {
+                        append("client_secret", clientSecret)
+                    }
                     append("code_verifier", codeVerifier)
                 }
             )

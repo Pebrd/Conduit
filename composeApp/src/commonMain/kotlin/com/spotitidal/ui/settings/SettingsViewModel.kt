@@ -65,7 +65,10 @@ class SettingsViewModel(
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
             try {
-                val tokens = oauthHandler.authenticateSpotify(uiState.value.spotifyClientId)
+                val tokens = oauthHandler.authenticateSpotify(
+                    uiState.value.spotifyClientId,
+                    uiState.value.spotifyClientSecret
+                )
                 if (tokens != null) {
                     tokenStorage.saveTokens("spotify", tokens.accessToken, tokens.refreshToken, tokens.expiresAt)
                     _uiState.update { it.copy(isSpotifyConnected = true) }
@@ -82,7 +85,10 @@ class SettingsViewModel(
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
             try {
-                val tokens = oauthHandler.authenticateTidal(uiState.value.tidalClientId)
+                val tokens = oauthHandler.authenticateTidal(
+                    uiState.value.tidalClientId,
+                    uiState.value.tidalClientSecret
+                )
                 if (tokens != null) {
                     tokenStorage.saveTokens("tidal", tokens.accessToken, tokens.refreshToken, tokens.expiresAt)
                     _uiState.update { it.copy(isTidalConnected = true) }

@@ -22,3 +22,4 @@ class SettingsStorage(private val settings: Settings) {
         get() = settings.getInt("sync_interval_hours", 24)
         set(value) = settings.putInt("sync_interval_hours", value)
 }
+ 

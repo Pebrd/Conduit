@@ -24,7 +24,7 @@ class AndroidOAuthHandler(
         }
     }
 
-    override suspend fun authenticateSpotify(clientId: String): OAuthTokens? {
+    override suspend fun authenticateSpotify(clientId: String, clientSecret: String?): OAuthTokens? {
         val state = UUID.randomUUID().toString()
         val codeVerifier = generateCodeVerifier()
         val codeChallenge = generateCodeChallenge(codeVerifier)
@@ -50,10 +50,10 @@ class AndroidOAuthHandler(
         context.startActivity(intent)
         
         val code = deferred.await() ?: return null
-        return oauthRepository.exchangeCodeForSpotifyTokens(clientId, code, codeVerifier, redirectUri)
+        return oauthRepository.exchangeCodeForSpotifyTokens(clientId, clientSecret, code, codeVerifier, redirectUri)
     }
 
-    override suspend fun authenticateTidal(clientId: String): OAuthTokens? {
+    override suspend fun authenticateTidal(clientId: String, clientSecret: String?): OAuthTokens? {
         val state = UUID.randomUUID().toString()
         val codeVerifier = generateCodeVerifier()
         val codeChallenge = generateCodeChallenge(codeVerifier)
@@ -79,7 +79,7 @@ class AndroidOAuthHandler(
         context.startActivity(intent)
         
         val code = deferred.await() ?: return null
-        return oauthRepository.exchangeCodeForTidalTokens(clientId, code, codeVerifier, redirectUri)
+        return oauthRepository.exchangeCodeForTidalTokens(clientId, clientSecret, code, codeVerifier, redirectUri)
     }
 
     private fun generateCodeVerifier(): String {

@@ -12,11 +12,13 @@ import java.net.URI
 import java.util.*
 import java.security.MessageDigest
 import io.ktor.server.application.*
+import java.net.URLEncoder
 
 class DesktopOAuthHandler(private val oauthRepository: OAuthRepository) : OAuthHandler {
-    override suspend fun authenticateSpotify(clientId: String): OAuthTokens? {
+    override suspend fun authenticateSpotify(clientId: String, clientSecret: String?): OAuthTokens? {
         return authenticate(
             clientId = clientId,
+            clientSecret = clientSecret,
             authUrl = "https://accounts.spotify.com/authorize",
             tokenUrl = "https://accounts.spotify.com/api/token",
             scopes = "playlist-read-private playlist-read-collaborative user-library-read",
@@ -24,9 +26,10 @@ class DesktopOAuthHandler(private val oauthRepository: OAuthRepository) : OAuthH
         )
     }
 
-    override suspend fun authenticateTidal(clientId: String): OAuthTokens? {
+    override suspend fun authenticateTidal(clientId: String, clientSecret: String?): OAuthTokens? {
         return authenticate(
             clientId = clientId,
+            clientSecret = clientSecret,
             authUrl = "https://login.tidal.com/oauth2/authorize",
             tokenUrl = "https://login.tidal.com/oauth2/token",
             scopes = "r_usr w_usr w_sub",
@@ -36,6 +39,7 @@ class DesktopOAuthHandler(private val oauthRepository: OAuthRepository) : OAuthH
 
     private suspend fun authenticate(
         clientId: String,
+        clientSecret: String?,
         authUrl: String,
         tokenUrl: String,
         scopes: String,
@@ -75,15 +79,17 @@ class DesktopOAuthHandler(private val oauthRepository: OAuthRepository) : OAuthH
         }.start(wait = false)
 
         try {
-            val uri = "$authUrl?client_id=$clientId&response_type=code&redirect_uri=$redirectUri&scope=$scopes&state=$state&code_challenge_method=S256&code_challenge=$codeChallenge"
+            val encodedScopes = URLEncoder.encode(scopes, "UTF-8")
+            val encodedRedirectUri = URLEncoder.encode(redirectUri, "UTF-8")
+            val uri = "$authUrl?client_id=$clientId&response_type=code&redirect_uri=$encodedRedirectUri&scope=$encodedScopes&state=$state&code_challenge_method=S256&code_challenge=$codeChallenge"
             Desktop.getDesktop().browse(URI(uri))
             
             val code = deferredCode.await() ?: return null
             
             return if (authUrl.contains("spotify")) {
-                oauthRepository.exchangeCodeForSpotifyTokens(clientId, code, codeVerifier, redirectUri)
+                oauthRepository.exchangeCodeForSpotifyTokens(clientId, clientSecret, code, codeVerifier, redirectUri)
             } else {
-                oauthRepository.exchangeCodeForTidalTokens(clientId, code, codeVerifier, redirectUri)
+                oauthRepository.exchangeCodeForTidalTokens(clientId, clientSecret, code, codeVerifier, redirectUri)
             }
         } finally {
             server.stop(1000, 1000)
