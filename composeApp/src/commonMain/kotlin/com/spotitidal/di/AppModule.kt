@@ -10,6 +10,11 @@ import io.ktor.serialization.kotlinx.json.*
 import kotlinx.serialization.json.Json
 import com.spotitidal.data.spotify.*
 import com.spotitidal.data.tidal.*
+import com.spotitidal.data.auth.*
+import com.spotitidal.ui.settings.*
+import com.spotitidal.ui.home.*
+import com.spotitidal.ui.sync.*
+import com.spotitidal.ui.diff.*
 import com.spotitidal.domain.repository.*
 import com.spotitidal.domain.usecase.*
 
@@ -17,6 +22,8 @@ import io.ktor.client.plugins.auth.*
 import io.ktor.client.plugins.auth.providers.*
 import io.ktor.client.request.*
 import io.ktor.http.*
+import org.koin.core.module.dsl.viewModelOf
+import org.koin.core.module.dsl.factoryOf
 
 val appModule = module {
     single { 
@@ -30,16 +37,10 @@ val appModule = module {
             
             val tokenStorage = get<TokenStorage>()
             
-            // Note: This is a simplified interceptor. 
-            // Real apps should use Ktor Auth plugin with RefreshToken logic.
             install(Auth) {
                 bearer {
                     loadTokens {
-                        // We need to know which service we are calling.
-                        // This is tricky for a single client.
-                        // For now, I'll just add it manually in ApiClients if needed,
-                        // or detect the host.
-                        null
+                        null as BearerTokens?
                     }
                 }
             }
@@ -63,13 +64,13 @@ val appModule = module {
     single { SyncEngine(get(), get(), get()) }
     
     // Use Cases
-    single { GetPlaylistsUseCase(get()) }
-    single { BuildDiffUseCase(get(), get()) }
-    single { SyncPlaylistUseCase(get(), get(), get()) }
+    factoryOf(::GetPlaylistsUseCase)
+    factoryOf(::BuildDiffUseCase)
+    factoryOf(::SyncPlaylistUseCase)
 
     // ViewModels
-    factory { SettingsViewModel(get(), get(), get()) }
-    factory { HomeViewModel(get()) }
-    factory { SyncViewModel(get()) }
-    factory { DiffViewModel(get()) }
+    viewModelOf(::SettingsViewModel)
+    viewModelOf(::HomeViewModel)
+    viewModelOf(::SyncViewModel)
+    viewModelOf(::DiffViewModel)
 }

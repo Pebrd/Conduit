@@ -3,8 +3,8 @@ package com.spotitidal.platform
 import android.content.Context
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
-import com.russhwolf.multiplatform.settings.Settings
-import com.russhwolf.multiplatform.settings.SharedPreferencesSettings
+import com.russhwolf.settings.Settings
+import com.russhwolf.settings.SharedPreferencesSettings
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.module.Module
 import org.koin.dsl.module
@@ -26,5 +26,5 @@ actual val platformModule: Module = module {
         SharedPreferencesSettings(sharedPreferences)
     }
 
-    single { OAuthHandler(androidContext(), get()) }
+    single<OAuthHandler> { AndroidOAuthHandler(androidContext(), get()) }
 }

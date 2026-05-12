@@ -92,6 +92,7 @@ fun DiffRow(entry: DiffEntry) {
             DiffStatus.NEW -> "➕"
             DiffStatus.CONFLICT -> "⚠️"
             DiffStatus.REMOVED -> "❌"
+            DiffStatus.MISSING -> "❓"
         }
         
         Text(statusIcon)

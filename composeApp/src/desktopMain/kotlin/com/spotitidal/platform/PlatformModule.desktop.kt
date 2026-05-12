@@ -1,7 +1,7 @@
 package com.spotitidal.platform
 
-import com.russhwolf.multiplatform.settings.PreferencesSettings
-import com.russhwolf.multiplatform.settings.Settings
+import com.russhwolf.settings.PreferencesSettings
+import com.russhwolf.settings.Settings
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import java.util.prefs.Preferences
@@ -12,5 +12,5 @@ actual val platformModule: Module = module {
         PreferencesSettings(preferences)
     }
 
-    single { OAuthHandler(get()) }
+    single<OAuthHandler> { DesktopOAuthHandler(get()) }
 }

@@ -1,6 +1,6 @@
 package com.spotitidal.domain.usecase
 
-import com.spotitidal.data.sync.SyncEngine
+import com.spotitidal.data.sync.*
 import com.spotitidal.domain.model.*
 import com.spotitidal.domain.repository.SpotifyRepository
 import com.spotitidal.domain.repository.TidalRepository

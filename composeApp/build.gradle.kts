@@ -33,10 +33,12 @@ kotlin {
 
             implementation(libs.ktor.client.core)
             implementation(libs.ktor.client.content.negotiation)
+            implementation(libs.ktor.client.auth)
             implementation(libs.ktor.serialization.json)
 
             implementation(libs.koin.core)
             implementation(libs.koin.compose)
+            implementation(libs.koin.compose.viewmodel)
 
             implementation(libs.coroutines.core)
             implementation(libs.serialization.json)
@@ -44,8 +46,9 @@ kotlin {
             implementation(libs.coil.compose)
             implementation(libs.coil.network)
 
-            implementation(libs.multiplatform.settings)
-            implementation(libs.multiplatform.settings.coroutines)
+            implementation("com.russhwolf:multiplatform-settings:1.3.0")
+            implementation("com.russhwolf:multiplatform-settings-no-arg:1.3.0")
+            implementation("com.russhwolf:multiplatform-settings-coroutines:1.3.0")
 
             implementation(libs.androidx.lifecycle.viewmodel)
             implementation(libs.androidx.lifecycle.compose)
@@ -67,6 +70,7 @@ kotlin {
             implementation(libs.ktor.client.okhttp)
             implementation(libs.ktor.server.netty)
             implementation(libs.ktor.server.core)
+            implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.9.0")
         }
     }
 }

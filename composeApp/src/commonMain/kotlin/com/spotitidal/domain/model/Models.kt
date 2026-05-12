@@ -94,6 +94,6 @@ data class OAuthTokens(
 )
 
 enum class MusicService { SPOTIFY, TIDAL }
-enum class DiffStatus   { NEW, OK, MISSING }
+enum class DiffStatus   { NEW, OK, MISSING, CONFLICT, REMOVED }
 enum class BlacklistScope { GLOBAL, PER_PLAYLIST }
 enum class MatchMethod  { ISRC, FuzzyHigh, AlbumMatch, ManualMapping }

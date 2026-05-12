@@ -18,7 +18,7 @@ class OAuthCallbackActivity : ComponentActivity() {
     private fun handleIntent(intent: Intent?) {
         val uri = intent?.data
         if (uri != null) {
-            OAuthHandler.onCallback(uri)
+            AndroidOAuthHandler.onCallback(uri)
         }
         finish()
     }

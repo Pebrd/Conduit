@@ -6,8 +6,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.shape.RectangleShape
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.shape.RoundedCornerShape
 
 // ── Colores AMOLED ────────────────────────────────────────────────────────────
 val AmoledBlack    = Color(0xFF000000)
@@ -34,13 +34,14 @@ private val ColorScheme = darkColorScheme(
     error            = ErrorRed,
 )
 
+
 // Sin bordes redondeados
 private val Shapes = Shapes(
-    extraSmall = RectangleShape,
-    small      = RectangleShape,
-    medium     = RectangleShape,
-    large      = RectangleShape,
-    extraLarge = RectangleShape,
+    extraSmall = RoundedCornerShape(0.dp),
+    small      = RoundedCornerShape(0.dp),
+    medium     = RoundedCornerShape(0.dp),
+    large      = RoundedCornerShape(0.dp),
+    extraLarge = RoundedCornerShape(0.dp),
 )
 
 @Composable

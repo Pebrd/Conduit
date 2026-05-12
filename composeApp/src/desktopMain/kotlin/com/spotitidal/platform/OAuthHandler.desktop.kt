@@ -13,8 +13,8 @@ import java.util.*
 import java.security.MessageDigest
 import io.ktor.server.application.*
 
-actual class OAuthHandler(private val oauthRepository: OAuthRepository) {
-    actual suspend fun authenticateSpotify(clientId: String): OAuthTokens? {
+class DesktopOAuthHandler(private val oauthRepository: OAuthRepository) : OAuthHandler {
+    override suspend fun authenticateSpotify(clientId: String): OAuthTokens? {
         return authenticate(
             clientId = clientId,
             authUrl = "https://accounts.spotify.com/authorize",
@@ -24,7 +24,7 @@ actual class OAuthHandler(private val oauthRepository: OAuthRepository) {
         )
     }
 
-    actual suspend fun authenticateTidal(clientId: String): OAuthTokens? {
+    override suspend fun authenticateTidal(clientId: String): OAuthTokens? {
         return authenticate(
             clientId = clientId,
             authUrl = "https://login.tidal.com/oauth2/authorize",
@@ -89,7 +89,6 @@ actual class OAuthHandler(private val oauthRepository: OAuthRepository) {
             server.stop(1000, 1000)
         }
     }
-
 
     private fun generateCodeVerifier(): String {
         val bytes = ByteArray(64)

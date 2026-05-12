@@ -1,6 +1,6 @@
 package com.spotitidal.data.local
 
-import com.russhwolf.multiplatform.settings.Settings
+import com.russhwolf.settings.Settings
 import com.spotitidal.domain.model.BlacklistEntry
 import com.spotitidal.domain.model.BlacklistScope
 import kotlinx.serialization.encodeToString

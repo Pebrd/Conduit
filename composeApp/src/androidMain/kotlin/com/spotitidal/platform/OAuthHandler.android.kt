@@ -9,10 +9,10 @@ import kotlinx.coroutines.CompletableDeferred
 import java.security.MessageDigest
 import java.util.*
 
-actual class OAuthHandler(
+class AndroidOAuthHandler(
     private val context: Context,
     private val oauthRepository: OAuthRepository
-) {
+) : OAuthHandler {
     
     companion object {
         private var pendingResult: CompletableDeferred<String?>? = null
@@ -24,7 +24,7 @@ actual class OAuthHandler(
         }
     }
 
-    actual suspend fun authenticateSpotify(clientId: String): OAuthTokens? {
+    override suspend fun authenticateSpotify(clientId: String): OAuthTokens? {
         val state = UUID.randomUUID().toString()
         val codeVerifier = generateCodeVerifier()
         val codeChallenge = generateCodeChallenge(codeVerifier)
@@ -53,7 +53,7 @@ actual class OAuthHandler(
         return oauthRepository.exchangeCodeForSpotifyTokens(clientId, code, codeVerifier, redirectUri)
     }
 
-    actual suspend fun authenticateTidal(clientId: String): OAuthTokens? {
+    override suspend fun authenticateTidal(clientId: String): OAuthTokens? {
         val state = UUID.randomUUID().toString()
         val codeVerifier = generateCodeVerifier()
         val codeChallenge = generateCodeChallenge(codeVerifier)

@@ -110,15 +110,15 @@ class SyncEngine(
 
     fun normalize(s: String): String = s
         .lowercase()
-        .replace(Regex("\(feat\.?[^)]*\)|\(ft\.?[^)]*\)|\(with [^)]*\)"), "")
-        .replace(Regex("\[[^]]*\]"), "")
-        .replace(Regex("\((remaster|live|acoustic|radio edit|extended|deluxe|demo|instrumental|version|edit)[^)]*\)", RegexOption.IGNORE_CASE), "")
-        .replace(Regex("[^a-z0-9 ]"), "")
-        .replace(Regex("\s+"), " ")
+        .replace(Regex("""\(feat\.?[^)]*\)|\(ft\.?[^)]*\)|\(with [^)]*\)"""), "")
+        .replace(Regex("""\[[^]]*\]"""), "")
+        .replace(Regex("""\((remaster|live|acoustic|radio edit|extended|deluxe|demo|instrumental|version|edit)[^)]*\)""", RegexOption.IGNORE_CASE), "")
+        .replace(Regex("""[^a-z0-9 ]"""), "")
+        .replace(Regex("""\s+"""), " ")
         .trim()
 
     fun parseArtists(raw: String): Set<String> =
-        raw.split(Regex(",|&|/| x | feat\.?| ft\.?| with ", RegexOption.IGNORE_CASE))
+        raw.split(Regex(""",|&|/| x | feat\.?| ft\.?| with """, RegexOption.IGNORE_CASE))
             .map { normalize(it) }
             .filter { it.isNotBlank() }
             .toSet()

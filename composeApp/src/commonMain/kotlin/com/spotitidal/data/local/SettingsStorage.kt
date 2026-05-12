@@ -1,5 +1,5 @@
 package com.spotitidal.data.local
-import com.russhwolf.multiplatform.settings.Settings
+import com.russhwolf.settings.Settings
 
 class SettingsStorage(private val settings: Settings) {
     var spotifyClientId: String

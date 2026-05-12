@@ -1,6 +1,6 @@
 package com.spotitidal.data.local
 
-import com.russhwolf.multiplatform.settings.Settings
+import com.russhwolf.settings.Settings
 import com.spotitidal.domain.model.SyncResult
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json

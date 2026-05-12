@@ -1,5 +1,5 @@
 package com.spotitidal.data.local
-import com.russhwolf.multiplatform.settings.Settings
+import com.russhwolf.settings.Settings
 
 class TokenStorage(private val settings: Settings) {
     fun saveTokens(service: String, accessToken: String, refreshToken: String, expiresAt: Long) {
