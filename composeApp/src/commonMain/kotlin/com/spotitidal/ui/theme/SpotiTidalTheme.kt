@@ -10,9 +10,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.text.font.FontFamily
 
+import org.jetbrains.compose.resources.Font
+import spotitidal.composeapp.generated.resources.*
+
 // Tipografía
+val ProtoMono = FontFamily.Monospace // Reemplaza con FontFamily(Font(Res.font.protomono)) cuando el archivo esté listo
 val Inter = FontFamily.SansSerif
-val ProtoMono = FontFamily.Monospace
 
 val SpotiTidalTypography = Typography(
     bodyLarge = TextStyle(

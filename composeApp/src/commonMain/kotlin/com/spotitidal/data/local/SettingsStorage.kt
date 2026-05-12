@@ -6,9 +6,17 @@ class SettingsStorage(private val settings: Settings) {
         get() = settings.getString("spotify_client_id", "")
         set(value) = settings.putString("spotify_client_id", value)
 
+    var spotifyClientSecret: String
+        get() = settings.getString("spotify_client_secret", "")
+        set(value) = settings.putString("spotify_client_secret", value)
+
     var tidalClientId: String
         get() = settings.getString("tidal_client_id", "")
         set(value) = settings.putString("tidal_client_id", value)
+
+    var tidalClientSecret: String
+        get() = settings.getString("tidal_client_secret", "")
+        set(value) = settings.putString("tidal_client_secret", value)
 
     var syncIntervalHours: Int
         get() = settings.getInt("sync_interval_hours", 24)

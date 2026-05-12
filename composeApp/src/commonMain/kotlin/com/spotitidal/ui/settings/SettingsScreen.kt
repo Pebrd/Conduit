@@ -1,5 +1,6 @@
 package com.spotitidal.ui.settings
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -8,10 +9,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
-import com.spotitidal.ui.theme.AmoledBlack
-import com.spotitidal.ui.theme.SurfaceDark
-import com.spotitidal.ui.theme.OnSurfaceDim
+import androidx.compose.ui.Alignment
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.OpenInNew
+import com.spotitidal.ui.theme.*
 import org.koin.compose.viewmodel.koinViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -22,6 +25,7 @@ fun SettingsScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     var showInstructions by remember { mutableStateOf(false) }
+    val uriHandler = LocalUriHandler.current
 
     if (showInstructions) {
         AlertDialog(
@@ -36,11 +40,11 @@ fun SettingsScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     Column {
                         Text("Spotify:", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-                        Text("1. Go to developer.spotify.com/dashboard\n2. Create an app and copy the Client ID\n3. Add 'spotitidal://spotify/callback' to Redirect URIs", style = MaterialTheme.typography.bodySmall)
+                        Text("1. Go to developer.spotify.com\n2. Create an app and copy the Client ID & Secret\n3. Add 'spotitidal://spotify/callback' to Redirect URIs", style = MaterialTheme.typography.bodySmall)
                     }
                     Column {
                         Text("Tidal:", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.secondary)
-                        Text("1. Go to developer.tidal.com\n2. Create an app and copy the Client ID\n3. Add 'spotitidal://tidal/callback' to Redirect URIs", style = MaterialTheme.typography.bodySmall)
+                        Text("1. Go to developer.tidal.com\n2. Create an app and copy the Client ID & Secret\n3. Add 'spotitidal://tidal/callback' to Redirect URIs", style = MaterialTheme.typography.bodySmall)
                     }
                 }
             },
@@ -54,7 +58,7 @@ fun SettingsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("SETTINGS") },
+                title = { Text("SETTINGS", style = MaterialTheme.typography.titleLarge) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = AmoledBlack,
                     titleContentColor = Color.White
@@ -71,7 +75,7 @@ fun SettingsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            // Header / Landing info
+            // Header
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -79,13 +83,13 @@ fun SettingsScreen(
                     .padding(16.dp)
             ) {
                 Text(
-                    "Welcome to SpotiTidal",
+                    "Configuration",
                     style = MaterialTheme.typography.titleLarge,
                     color = Color.White
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    "To begin, you need to provide your own API credentials. This ensures your data stays private and gives you full control over the synchronization.",
+                    "Set up your API credentials to enable synchronization. For mobile/desktop apps, the Client Secret is optional if PKCE is used, but providing it ensures compatibility with all flows.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = OnSurfaceDim
                 )
@@ -94,19 +98,36 @@ fun SettingsScreen(
                     onClick = { showInstructions = true },
                     contentPadding = PaddingValues(0.dp)
                 ) {
-                    Text("How to get my Client IDs? ↗", color = MaterialTheme.colorScheme.primary)
+                    Text("Instruction Guide ↗", color = MaterialTheme.colorScheme.primary)
                 }
             }
 
             // Spotify Section
             SettingsSection(title = "SPOTIFY") {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = state.spotifyClientId,
+                        onValueChange = viewModel::updateSpotifyClientId,
+                        label = { Text("Client ID") },
+                        modifier = Modifier.weight(1f),
+                        textStyle = MaterialTheme.typography.labelSmall,
+                        colors = textFieldColors()
+                    )
+                    IconButton(onClick = { uriHandler.openUri("https://developer.spotify.com") }) {
+                        Icon(Icons.Default.OpenInNew, contentDescription = "Open Dashboard", tint = MaterialTheme.colorScheme.primary)
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(8.dp))
+
                 OutlinedTextField(
-                    value = state.spotifyClientId,
-                    onValueChange = viewModel::updateSpotifyClientId,
-                    label = { Text("Client ID") },
+                    value = state.spotifyClientSecret,
+                    onValueChange = viewModel::updateSpotifyClientSecret,
+                    label = { Text("Client Secret (Optional)") },
                     modifier = Modifier.fillMaxWidth(),
                     textStyle = MaterialTheme.typography.labelSmall,
-                    colors = textFieldColors()
+                    colors = textFieldColors(),
+                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation()
                 )
                 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -115,8 +136,10 @@ fun SettingsScreen(
                     onClick = viewModel::connectSpotify,
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (state.isSpotifyConnected) MaterialTheme.colorScheme.primary else Color.DarkGray
+                        containerColor = if (state.isSpotifyConnected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                        contentColor = if (state.isSpotifyConnected) Color.Black else MaterialTheme.colorScheme.primary
                     ),
+                    border = if (!state.isSpotifyConnected) BorderStroke(1.dp, MaterialTheme.colorScheme.primary) else null,
                     shape = MaterialTheme.shapes.extraSmall
                 ) {
                     Text(if (state.isSpotifyConnected) "✓ CONNECTED" else "CONNECT SPOTIFY")
@@ -125,13 +148,30 @@ fun SettingsScreen(
 
             // Tidal Section
             SettingsSection(title = "TIDAL") {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = state.tidalClientId,
+                        onValueChange = viewModel::updateTidalClientId,
+                        label = { Text("Client ID") },
+                        modifier = Modifier.weight(1f),
+                        textStyle = MaterialTheme.typography.labelSmall,
+                        colors = textFieldColors()
+                    )
+                    IconButton(onClick = { uriHandler.openUri("https://developer.tidal.com") }) {
+                        Icon(Icons.Default.OpenInNew, contentDescription = "Open Dashboard", tint = MaterialTheme.colorScheme.secondary)
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(8.dp))
+
                 OutlinedTextField(
-                    value = state.tidalClientId,
-                    onValueChange = viewModel::updateTidalClientId,
-                    label = { Text("Client ID") },
+                    value = state.tidalClientSecret,
+                    onValueChange = viewModel::updateTidalClientSecret,
+                    label = { Text("Client Secret (Optional)") },
                     modifier = Modifier.fillMaxWidth(),
                     textStyle = MaterialTheme.typography.labelSmall,
-                    colors = textFieldColors()
+                    colors = textFieldColors(),
+                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation()
                 )
                 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -140,8 +180,10 @@ fun SettingsScreen(
                     onClick = viewModel::connectTidal,
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (state.isTidalConnected) MaterialTheme.colorScheme.secondary else Color.DarkGray
+                        containerColor = if (state.isTidalConnected) MaterialTheme.colorScheme.secondary else Color.Transparent,
+                        contentColor = if (state.isTidalConnected) Color.Black else MaterialTheme.colorScheme.secondary
                     ),
+                    border = if (!state.isTidalConnected) BorderStroke(1.dp, MaterialTheme.colorScheme.secondary) else null,
                     shape = MaterialTheme.shapes.extraSmall
                 ) {
                     Text(if (state.isTidalConnected) "✓ CONNECTED" else "CONNECT TIDAL")

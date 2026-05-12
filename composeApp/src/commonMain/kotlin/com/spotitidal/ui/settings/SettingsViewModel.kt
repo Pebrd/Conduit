@@ -12,7 +12,9 @@ import kotlinx.coroutines.launch
 
 data class SettingsUiState(
     val spotifyClientId: String = "",
+    val spotifyClientSecret: String = "",
     val tidalClientId: String = "",
+    val tidalClientSecret: String = "",
     val isSpotifyConnected: Boolean = false,
     val isTidalConnected: Boolean = false,
     val isLoading: Boolean = false,
@@ -31,7 +33,9 @@ class SettingsViewModel(
     init {
         _uiState.update { it.copy(
             spotifyClientId = settingsStorage.spotifyClientId,
+            spotifyClientSecret = settingsStorage.spotifyClientSecret,
             tidalClientId = settingsStorage.tidalClientId,
+            tidalClientSecret = settingsStorage.tidalClientSecret,
             isSpotifyConnected = tokenStorage.getAccessToken("spotify") != null,
             isTidalConnected = tokenStorage.getAccessToken("tidal") != null
         ) }
@@ -42,9 +46,19 @@ class SettingsViewModel(
         _uiState.update { it.copy(spotifyClientId = id) }
     }
 
+    fun updateSpotifyClientSecret(secret: String) {
+        settingsStorage.spotifyClientSecret = secret
+        _uiState.update { it.copy(spotifyClientSecret = secret) }
+    }
+
     fun updateTidalClientId(id: String) {
         settingsStorage.tidalClientId = id
         _uiState.update { it.copy(tidalClientId = id) }
+    }
+
+    fun updateTidalClientSecret(secret: String) {
+        settingsStorage.tidalClientSecret = secret
+        _uiState.update { it.copy(tidalClientSecret = secret) }
     }
 
     fun connectSpotify() {
