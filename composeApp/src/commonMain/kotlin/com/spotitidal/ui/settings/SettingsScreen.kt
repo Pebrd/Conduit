@@ -44,6 +44,33 @@ fun SettingsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
+            // Header / Landing info
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(SurfaceDark)
+                    .padding(16.dp)
+            ) {
+                Text(
+                    "Welcome to SpotiTidal",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = Color.White
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    "To begin, you need to provide your own API credentials. This ensures your data stays private and gives you full control over the synchronization.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = OnSurfaceDim
+                )
+                
+                TextButton(
+                    onClick = { /* TODO: Show dialog with info */ },
+                    contentPadding = PaddingValues(0.dp)
+                ) {
+                    Text("How to get my Client IDs? ↗", color = MaterialTheme.colorScheme.primary)
+                }
+            }
+
             // Spotify Section
             SettingsSection(title = "SPOTIFY") {
                 OutlinedTextField(
@@ -51,6 +78,7 @@ fun SettingsScreen(
                     onValueChange = viewModel::updateSpotifyClientId,
                     label = { Text("Client ID") },
                     modifier = Modifier.fillMaxWidth(),
+                    textStyle = MaterialTheme.typography.labelSmall,
                     colors = textFieldColors()
                 )
                 
@@ -75,6 +103,7 @@ fun SettingsScreen(
                     onValueChange = viewModel::updateTidalClientId,
                     label = { Text("Client ID") },
                     modifier = Modifier.fillMaxWidth(),
+                    textStyle = MaterialTheme.typography.labelSmall,
                     colors = textFieldColors()
                 )
                 
@@ -89,6 +118,34 @@ fun SettingsScreen(
                     shape = MaterialTheme.shapes.extraSmall
                 ) {
                     Text(if (state.isTidalConnected) "✓ CONNECTED" else "CONNECT TIDAL")
+                }
+            }
+
+            // Sync Settings
+            SettingsSection(title = "SYNC CONFIGURATION") {
+                Text(
+                    "Sync Interval",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.White
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf("MANUAL", "DAILY", "WEEKLY").forEach { interval ->
+                        FilterChip(
+                            selected = false, // TODO: Bind to state
+                            onClick = { /* TODO */ },
+                            label = { Text(interval) },
+                            shape = MaterialTheme.shapes.extraSmall,
+                            colors = FilterChipDefaults.filterChipColors(
+                                containerColor = AmoledBlack,
+                                labelColor = OnSurfaceDim,
+                                selectedContainerColor = MaterialTheme.colorScheme.primary,
+                                selectedLabelColor = Color.Black
+                            )
+                        )
+                    }
                 }
             }
 
