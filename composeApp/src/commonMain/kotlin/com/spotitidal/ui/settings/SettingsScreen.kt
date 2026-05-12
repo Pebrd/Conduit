@@ -5,9 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -23,6 +21,35 @@ fun SettingsScreen(
     onBack: () -> Unit = {}
 ) {
     val state by viewModel.uiState.collectAsState()
+    var showInstructions by remember { mutableStateOf(false) }
+
+    if (showInstructions) {
+        AlertDialog(
+            onDismissRequest = { showInstructions = false },
+            confirmButton = {
+                TextButton(onClick = { showInstructions = false }) {
+                    Text("GOT IT", color = MaterialTheme.colorScheme.primary)
+                }
+            },
+            title = { Text("How to get Client IDs") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Column {
+                        Text("Spotify:", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                        Text("1. Go to developer.spotify.com/dashboard\n2. Create an app and copy the Client ID\n3. Add 'spotitidal://spotify/callback' to Redirect URIs", style = MaterialTheme.typography.bodySmall)
+                    }
+                    Column {
+                        Text("Tidal:", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.secondary)
+                        Text("1. Go to developer.tidal.com\n2. Create an app and copy the Client ID\n3. Add 'spotitidal://tidal/callback' to Redirect URIs", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            },
+            containerColor = SurfaceDark,
+            titleContentColor = Color.White,
+            textContentColor = Color.LightGray,
+            shape = MaterialTheme.shapes.extraSmall
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -64,7 +91,7 @@ fun SettingsScreen(
                 )
                 
                 TextButton(
-                    onClick = { /* TODO: Show dialog with info */ },
+                    onClick = { showInstructions = true },
                     contentPadding = PaddingValues(0.dp)
                 ) {
                     Text("How to get my Client IDs? ↗", color = MaterialTheme.colorScheme.primary)

@@ -12,7 +12,7 @@ import androidx.compose.ui.text.font.FontFamily
 
 // Tipografía
 val Inter = FontFamily.SansSerif
-val JetBrainsMono = FontFamily.Monospace
+val ProtoMono = FontFamily.Monospace
 
 val SpotiTidalTypography = Typography(
     bodyLarge = TextStyle(
@@ -30,7 +30,7 @@ val SpotiTidalTypography = Typography(
         letterSpacing = 0.25.sp
     ),
     labelSmall = TextStyle(
-        fontFamily = JetBrainsMono,
+        fontFamily = ProtoMono,
         fontWeight = FontWeight.Medium,
         fontSize = 11.sp,
         lineHeight = 16.sp,
@@ -50,7 +50,7 @@ val AmoledBlack    = Color(0xFF000000)
 val SurfaceDark    = Color(0xFF0A0A0A)
 val SurfaceVariant = Color(0xFF111111)
 val DividerColor   = Color(0xFF1A1A1A)
-val AccentGreen    = Color(0xFF1DB954)   // Spotify green
+val AccentSage     = Color(0xFF9CAF88)   // Muted Sage color
 val AccentBlue     = Color(0xFF00BFFF)   // Tidal blue
 val OnSurface      = Color(0xFFEEEEEE)
 val OnSurfaceDim   = Color(0xFF888888)
@@ -62,7 +62,7 @@ private val ColorScheme = darkColorScheme(
     background       = AmoledBlack,
     surface          = SurfaceDark,
     surfaceVariant   = SurfaceVariant,
-    primary          = AccentGreen,
+    primary          = AccentSage,
     secondary        = AccentBlue,
     onBackground     = OnSurface,
     onSurface        = OnSurface,
