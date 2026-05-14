@@ -7,3 +7,5 @@ build/
 local.properties
 .DS_Store
 *.enc
+**/Credentials.kt
+**/Credentials.kt.template

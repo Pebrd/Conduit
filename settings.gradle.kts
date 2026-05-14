@@ -1,4 +1,4 @@
-rootProject.name = "SpotiTidal"
+rootProject.name = "Conduit"
 include(":composeApp")
 
 pluginManagement {

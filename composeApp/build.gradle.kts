@@ -78,15 +78,16 @@ kotlin {
 }
 
 android {
-    namespace = "com.spotitidal"
+    namespace = "com.conduit"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.spotitidal"
+        applicationId = "com.conduit"
         minSdk = 26
         targetSdk = 35
         versionCode = 1
         versionName = "1.0.0"
+        manifestPlaceholders["appAuthRedirectScheme"] = "conduit"
     }
 
     buildTypes {
@@ -104,17 +105,17 @@ android {
 
 compose.desktop {
     application {
-        mainClass = "com.spotitidal.MainKt"
+        mainClass = "com.conduit.MainKt"
         nativeDistributions {
             targetFormats(TargetFormat.Deb, TargetFormat.Rpm, TargetFormat.Msi, TargetFormat.Exe)
-            packageName = "SpotiTidal"
+            packageName = "Conduit"
             packageVersion = "1.0.0"
             linux {
-                iconFile.set(project.file("src/commonMain/resources/icon.png"))
+                iconFile.set(project.file("src/desktopMain/resources/conduit_logo.png"))
             }
             windows {
-                iconFile.set(project.file("src/commonMain/resources/icon.ico"))
-                menuGroup = "SpotiTidal"
+                iconFile.set(project.file("src/desktopMain/resources/conduit_logo.png"))
+                menuGroup = "Conduit"
                 upgradeUuid = "A1B2C3D4-E5F6-7890-ABCD-EF1234567890"
             }
         }

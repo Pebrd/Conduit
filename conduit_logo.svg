@@ -1,0 +1,39 @@
+<svg width="680" height="680" viewBox="0 0 680 680" xmlns="http://www.w3.org/2000/svg" role="img">
+  <title>Conduit</title>
+  <desc>Isotipo de Conduit: tres trazos finos que convergen en el centro.</desc>
+
+  <rect width="680" height="680" fill="#000000"/>
+
+  <defs>
+    <linearGradient id="ga" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#444444"/>
+      <stop offset="45%" stop-color="#EEEEEE"/>
+      <stop offset="55%" stop-color="#EEEEEE"/>
+      <stop offset="100%" stop-color="#444444"/>
+    </linearGradient>
+    <linearGradient id="gb" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#444444"/>
+      <stop offset="45%" stop-color="#EEEEEE"/>
+      <stop offset="55%" stop-color="#EEEEEE"/>
+      <stop offset="100%" stop-color="#444444"/>
+    </linearGradient>
+    <linearGradient id="gc" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#222222"/>
+      <stop offset="45%" stop-color="#888888"/>
+      <stop offset="55%" stop-color="#888888"/>
+      <stop offset="100%" stop-color="#222222"/>
+    </linearGradient>
+  </defs>
+
+  <g transform="translate(340,340)">
+    <path d="M -230 -75 C -120 -75 -85 -10 0 0 C 85 10 120 75 230 75"
+          fill="none" stroke="url(#ga)" stroke-width="11" stroke-linecap="square"/>
+
+    <path d="M -230 0 C -115 0 -85 0 0 0 C 85 0 115 0 230 0"
+          fill="none" stroke="url(#gc)" stroke-width="5" stroke-linecap="square"/>
+
+    <path d="M -230 75 C -120 75 -85 10 0 0 C 85 -10 120 -75 230 -75"
+          fill="none" stroke="url(#gb)" stroke-width="11" stroke-linecap="square"/>
+  </g>
+
+</svg>
