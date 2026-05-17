@@ -4,6 +4,7 @@ import com.conduit.domain.model.*
 import com.conduit.domain.repository.TidalRepository
 import com.conduit.data.local.BlacklistStorage
 import com.conduit.data.local.MappingStorage
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.abs
 
 class SyncEngine(
@@ -11,10 +12,23 @@ class SyncEngine(
     private val mappingStorage: MappingStorage,
     private val blacklistStorage: BlacklistStorage,
 ) {
-    private val searchCache = mutableMapOf<String, List<TidalTrack>>()
-    private val albumCache  = mutableMapOf<String, List<TidalTrack>>()
+    private val searchCache = ConcurrentHashMap<String, List<TidalTrack>>()
+    private val albumCache  = ConcurrentHashMap<String, List<TidalTrack>>()
 
     suspend fun findTidalTrack(
+        track: Track,
+        playlistId: String,
+        existingTidalTrackIds: Set<String>,
+    ): MatchResult {
+        println("DEBUG TRACK: buscando '${track.name}' - '${track.artist}' isrc=${track.isrc}")
+        
+        val result = doFindTidalTrack(track, playlistId, existingTidalTrackIds)
+        
+        println("DEBUG RESULT: ${track.name} → $result")
+        return result
+    }
+
+    private suspend fun doFindTidalTrack(
         track: Track,
         playlistId: String,
         existingTidalTrackIds: Set<String>,
@@ -45,14 +59,17 @@ class SyncEngine(
 
         // Paso 3+4: búsqueda primaria con fallback
         val primaryQuery  = "$normTitle $normMainArtist"
-        val candidates = searchCache.getOrPut(primaryQuery) {
-            tidalRepo.searchTracks(primaryQuery, limit = 10)
-        }.ifEmpty {
-            searchCache.getOrPut(normTitle) { tidalRepo.searchTracks(normTitle, limit = 10) }
+        val candidates = searchCache[primaryQuery] ?: run {
+            tidalRepo.searchTracks(primaryQuery, limit = 10).also { searchCache[primaryQuery] = it }
+        }
+        val finalCandidates = candidates.ifEmpty {
+            searchCache[normTitle] ?: run {
+                tidalRepo.searchTracks(normTitle, limit = 10).also { searchCache[normTitle] = it }
+            }
         }
 
         // Paso 5+6: scoring
-        val best = candidates
+        val best = finalCandidates
             .map { it to computeScore(track, it, spotifyArtists, normTitle, normAlbum) }
             .maxByOrNull { it.second }
 
@@ -78,9 +95,10 @@ class SyncEngine(
         existingIds: Set<String>,
     ): MatchResult {
         val albumQuery  = "$normAlbum $normMainArtist"
-        val albumTracks = albumCache.getOrPut(albumQuery) {
+        val albumTracks = albumCache[albumQuery] ?: run {
             tidalRepo.searchAlbums(albumQuery, limit = 3)
                 .flatMap { tidalRepo.getAlbumTracks(it.id) }
+                .also { albumCache[albumQuery] = it }
         }
         val match = albumTracks.firstOrNull { levenshteinNorm(normalize(it.name), normTitle) > 0.85 }
         return if (match != null) {
@@ -103,8 +121,15 @@ class SyncEngine(
         val albumScore    = levenshteinNorm(normSpotAlbum, normalize(tidal.album))        * 0.10
         val yearScore     = yearScore(spotify.releaseYear, tidal.releaseYear)             * 0.05
         val penalty       = versionMismatchPenalty(spotify.name, tidal.name)             * 0.05
-        return (titleScore + artistScore + durationScore + albumScore + yearScore - penalty).coerceIn(0.0, 1.0)
+        
+        val total = (titleScore + artistScore + durationScore + albumScore + yearScore - penalty).coerceIn(0.0, 1.0)
+        
+        println("DEBUG SCORE: '${spotify.name}' vs '${tidal.name}' | title=${titleScore.format()} artist=${artistScore.format()} dur=${durationScore.format()} total=${total.format()}")
+        
+        return total
     }
+
+    private fun Double.format() = ( (this * 100).toInt().toDouble() / 100.0 ).toString()
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -176,4 +201,12 @@ sealed class MatchResult {
     data class Duplicate(val track: TidalTrack) : MatchResult()
     data class NotFound(val spotifyTrack: Track) : MatchResult()
     data class Blacklisted(val spotifyTrack: Track) : MatchResult()
+
+    fun trackName(): String = when (this) {
+        is Found -> track.name
+        is LowConfidence -> track.name
+        is Duplicate -> track.name
+        is NotFound -> spotifyTrack.name
+        is Blacklisted -> spotifyTrack.name
+    }
 }

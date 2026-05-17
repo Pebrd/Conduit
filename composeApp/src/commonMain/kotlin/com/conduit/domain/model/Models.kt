@@ -31,6 +31,7 @@ data class Playlist(
     val name: String,
     val trackCount: Int,
     val imageUrl: String? = null,
+    val description: String? = null,
     val source: MusicService,
 )
 

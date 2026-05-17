@@ -21,5 +21,8 @@ class SettingsStorage(private val settings: Settings) {
     var syncIntervalHours: Int
         get() = settings.getInt("sync_interval_hours", 24)
         set(value) = settings.putInt("sync_interval_hours", value)
+
+    fun getScopesVersion(): Int = settings.getInt("scopes_version", 0)
+    fun saveScopesVersion(version: Int) = settings.putInt("scopes_version", version)
 }
  

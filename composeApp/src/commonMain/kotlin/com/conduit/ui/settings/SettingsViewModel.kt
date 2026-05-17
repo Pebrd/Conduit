@@ -108,4 +108,14 @@ class SettingsViewModel(
             }
         }
     }
+
+    fun disconnectSpotify() {
+        tokenStorage.clearTokens("spotify")
+        _uiState.update { it.copy(isSpotifyConnected = false) }
+    }
+
+    fun disconnectTidal() {
+        tokenStorage.clearTokens("tidal")
+        _uiState.update { it.copy(isTidalConnected = false) }
+    }
 }

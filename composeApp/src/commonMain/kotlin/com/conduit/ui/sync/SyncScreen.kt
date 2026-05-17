@@ -12,7 +12,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import com.conduit.domain.usecase.SyncProgress
+import com.conduit.domain.model.SyncProgress
 import com.conduit.ui.theme.AmoledBlack
 import com.conduit.ui.theme.SuccessGreen
 import org.koin.compose.viewmodel.koinViewModel
@@ -25,10 +25,10 @@ fun SyncScreen(
     viewModel: SyncViewModel = koinViewModel(),
     onFinish: () -> Unit = {}
 ) {
-    val state by viewModel.uiState.collectAsState()
+    val state by viewModel.state.collectAsState()
 
     LaunchedEffect(playlistId) {
-        viewModel.startSync(playlistId, playlistName)
+        viewModel.syncPlaylist(playlistId, playlistName)
     }
 
     Scaffold(
@@ -60,6 +60,14 @@ fun SyncScreen(
             Spacer(modifier = Modifier.height(32.dp))
 
             when (val progress = state.progress) {
+                is SyncProgress.Started -> {
+                    CircularProgressIndicator(color = SuccessGreen)
+                    Text("Starting sync...", color = Color.White)
+                }
+                is SyncProgress.TracksLoaded -> {
+                    CircularProgressIndicator(color = SuccessGreen)
+                    Text("Loaded ${progress.total} tracks from Spotify", color = Color.White)
+                }
                 is SyncProgress.Running -> {
                     LinearProgressIndicator(
                         progress = { progress.current.toFloat() / progress.total },
@@ -105,6 +113,10 @@ fun SyncScreen(
                     ) {
                         Text("DONE")
                     }
+                }
+                is SyncProgress.Error -> {
+                    Text("ERROR", color = MaterialTheme.colorScheme.error)
+                    Text(progress.message, color = Color.White)
                 }
                 null -> {
                     CircularProgressIndicator()

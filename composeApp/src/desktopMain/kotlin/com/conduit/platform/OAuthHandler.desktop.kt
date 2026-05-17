@@ -13,15 +13,21 @@ import java.util.*
 import java.security.MessageDigest
 import io.ktor.server.application.*
 import java.net.URLEncoder
+import com.conduit.Credentials
+import com.conduit.data.local.SettingsStorage
+import com.conduit.platform.TidalDeviceResponse
 
-class DesktopOAuthHandler(private val oauthRepository: OAuthRepository) : OAuthHandler {
+class DesktopOAuthHandler(
+    private val oauthRepository: OAuthRepository,
+    private val settingsStorage: SettingsStorage
+) : OAuthHandler {
 
     override suspend fun authenticateSpotify(clientId: String, clientSecret: String?): OAuthTokens? {
         val state = UUID.randomUUID().toString()
         val codeVerifier = generateCodeVerifier()
         val codeChallenge = generateCodeChallenge(codeVerifier)
         val redirectUri = "http://127.0.0.1:8888/spotify/callback"
-        val scopes = "playlist-read-private playlist-read-collaborative user-library-read"
+        val scopes = "playlist-read-private playlist-read-collaborative user-library-read user-read-private user-read-email"
 
         val deferredCode = CompletableDeferred<String?>()
 
@@ -44,7 +50,7 @@ class DesktopOAuthHandler(private val oauthRepository: OAuthRepository) : OAuthH
         return try {
             val encodedScopes = URLEncoder.encode(scopes, "UTF-8")
             val encodedRedirectUri = URLEncoder.encode(redirectUri, "UTF-8")
-            val uri = "https://accounts.spotify.com/authorize?client_id=$clientId&response_type=code&redirect_uri=$encodedRedirectUri&scope=$encodedScopes&state=$state&code_challenge_method=S256&code_challenge=$codeChallenge"
+            val uri = "https://accounts.spotify.com/authorize?client_id=$clientId&response_type=code&redirect_uri=$encodedRedirectUri&scope=$encodedScopes&state=$state&show_dialog=true&code_challenge_method=S256&code_challenge=$codeChallenge"
             Desktop.getDesktop().browse(URI(uri))
 
             val code = deferredCode.await() ?: return null
@@ -55,41 +61,17 @@ class DesktopOAuthHandler(private val oauthRepository: OAuthRepository) : OAuthH
     }
 
     override suspend fun authenticateTidal(clientId: String, clientSecret: String?): OAuthTokens? {
-        val state = UUID.randomUUID().toString()
-        val codeVerifier = generateCodeVerifier()
-        val codeChallenge = generateCodeChallenge(codeVerifier)
-        val redirectUri = "http://127.0.0.1:8888/tidal/callback"
-        val scopes = "playlists.read playlists.write"
+        // Obsoleto
+        return null
+    }
 
-        val deferredCode = CompletableDeferred<String?>()
+    override suspend fun getTidalDeviceCode(): TidalDeviceResponse? {
+        val clientId = settingsStorage.tidalClientId.takeIf { it.isNotBlank() } ?: Credentials.TIDAL_CLIENT_ID
+        return oauthRepository.getTidalDeviceCode(clientId)
+    }
 
-        val server = embeddedServer(Netty, port = 8888) {
-            routing {
-                get("/tidal/callback") {
-                    val code = call.request.queryParameters["code"]
-                    val returnedState = call.request.queryParameters["state"]
-                    if (returnedState == state && code != null) {
-                        call.respondText("Autenticación exitosa. Puedes cerrar esta ventana.")
-                        deferredCode.complete(code)
-                    } else {
-                        call.respondText("Error de autenticación.")
-                        deferredCode.complete(null)
-                    }
-                }
-            }
-        }.start(wait = false)
-
-        return try {
-            val encodedScopes = URLEncoder.encode(scopes, "UTF-8")
-            val encodedRedirectUri = URLEncoder.encode(redirectUri, "UTF-8")
-            val uri = "https://login.tidal.com/authorize?client_id=$clientId&response_type=code&redirect_uri=$encodedRedirectUri&scope=$encodedScopes&state=$state&code_challenge_method=S256&code_challenge=$codeChallenge"
-            Desktop.getDesktop().browse(URI(uri))
-
-            val code = deferredCode.await() ?: return null
-            oauthRepository.exchangeCodeForTidalTokens(clientId, clientSecret, code, codeVerifier, redirectUri)
-        } finally {
-            server.stop(1000, 1000)
-        }
+    override fun openTidalBrowser(url: String) {
+        Desktop.getDesktop().browse(URI(url))
     }
 
     private fun generateCodeVerifier(): String {

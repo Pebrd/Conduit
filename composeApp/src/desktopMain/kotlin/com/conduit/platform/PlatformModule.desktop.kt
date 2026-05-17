@@ -12,5 +12,5 @@ actual val platformModule: Module = module {
         PreferencesSettings(preferences)
     }
 
-    single<OAuthHandler> { DesktopOAuthHandler(get()) }
+    single<OAuthHandler> { DesktopOAuthHandler(get(), get()) }
 }

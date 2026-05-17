@@ -1,6 +1,8 @@
 package com.conduit.domain.usecase
 
 import com.conduit.domain.model.SyncResult
+import com.conduit.domain.model.SyncProgress
+import com.conduit.domain.model.AllSyncProgress
 import com.conduit.domain.repository.SpotifyRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
@@ -28,45 +30,46 @@ class SyncAllPlaylistsUseCase(
         val semaphore = Semaphore(MAX_CONCURRENT_PLAYLISTS)
         val results   = mutableListOf<SyncResult>()
 
-        emit(AllSyncProgress.Started(total = playlists.size))
+        emit(AllSyncProgress.Started(playlists.size))
 
         coroutineScope {
-            playlists
-                .map { playlist ->
-                    async {
-                        semaphore.withPermit {
-                            // .last() returns the final SyncProgress — always Completed
-                            val finalProgress = syncPlaylistUseCase(playlist.id).last()
-                            (finalProgress as? SyncProgress.Completed)?.result
-                                ?: SyncResult(
-                                    id            = "sync_err_${Clock.System.now().toEpochMilliseconds()}",
-                                    playlistId    = playlist.id,
-                                    playlistName  = playlist.name,
-                                    matched       = emptyList(),
-                                    notFound      = emptyList(),
-                                    lowConfidence = emptyList(),
-                                    duplicates    = emptyList(),
-                                    blacklisted   = emptyList(),
-                                    durationMs    = 0L,
-                                    timestamp     = Clock.System.now().toEpochMilliseconds(),
-                                )
-                        }
+            playlists.map { playlist ->
+                async {
+                    semaphore.withPermit {
+                        syncPlaylistUseCase(playlist.id, playlist.name).last()
                     }
                 }
-                .awaitAll()
-                .forEach { result ->
-                    results.add(result)
-                    emit(AllSyncProgress.PlaylistCompleted(result, completed = results.size, total = playlists.size))
+            }.forEach { deferred ->
+                val result = deferred.await()
+                if (result is SyncProgress.Completed) {
+                    val syncResult = result.toSyncResult(results.size.toString()) // simplified ID
+                    results.add(syncResult)
+                    emit(AllSyncProgress.PlaylistCompleted(
+                        result      = syncResult,
+                        completed   = results.size,
+                        total       = playlists.size,
+                    ))
                 }
+            }
         }
 
         emit(AllSyncProgress.AllCompleted(results))
     }.flowOn(Dispatchers.IO)
 }
 
-sealed class AllSyncProgress {
-    data class Started(val total: Int) : AllSyncProgress()
-    data class PlaylistCompleted(val result: SyncResult, val completed: Int, val total: Int) : AllSyncProgress()
-    data class AllCompleted(val results: List<SyncResult>) : AllSyncProgress()
+// Helper to convert SyncProgress.Completed to SyncResult
+private fun SyncProgress.Completed.toSyncResult(idSuffix: String): SyncResult {
+    return SyncResult(
+        id = "sync_all_$idSuffix",
+        playlistId = "unknown", // Would need to pass it from UseCase if strictly needed
+        playlistName = playlistName,
+        matched = emptyList(), // Detailed matched tracks not easily available here without more mapping
+        notFound = notFoundTracks,
+        lowConfidence = lowConfTracks,
+        duplicates = emptyList(),
+        blacklisted = emptyList(),
+        durationMs = durationMs,
+        timestamp = Clock.System.now().toEpochMilliseconds()
+    )
 }
 

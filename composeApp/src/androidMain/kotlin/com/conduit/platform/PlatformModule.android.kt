@@ -26,5 +26,5 @@ actual val platformModule: Module = module {
         SharedPreferencesSettings(sharedPreferences)
     }
 
-    single<OAuthHandler> { AndroidOAuthHandler(androidContext(), get()) }
+    single<OAuthHandler> { AndroidOAuthHandler(androidContext(), get(), get()) }
 }

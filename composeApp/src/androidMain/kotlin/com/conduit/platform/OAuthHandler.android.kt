@@ -5,13 +5,17 @@ import android.content.Intent
 import android.net.Uri
 import com.conduit.data.auth.OAuthRepository
 import com.conduit.domain.model.OAuthTokens
+import com.conduit.Credentials
+import com.conduit.data.local.SettingsStorage
+import com.conduit.platform.TidalDeviceResponse
 import kotlinx.coroutines.CompletableDeferred
 import java.security.MessageDigest
 import java.util.*
 
 class AndroidOAuthHandler(
     private val context: Context,
-    private val oauthRepository: OAuthRepository
+    private val oauthRepository: OAuthRepository,
+    private val settingsStorage: SettingsStorage
 ) : OAuthHandler {
 
     companion object {
@@ -39,7 +43,8 @@ class AndroidOAuthHandler(
             .appendQueryParameter("client_id", clientId)
             .appendQueryParameter("response_type", "code")
             .appendQueryParameter("redirect_uri", redirectUri)
-            .appendQueryParameter("scope", "playlist-read-private playlist-read-collaborative user-library-read")
+            .appendQueryParameter("scope", "playlist-read-private playlist-read-collaborative user-library-read user-read-private user-read-email")
+            .appendQueryParameter("show_dialog", "true")
             .appendQueryParameter("state", state)
             .appendQueryParameter("code_challenge_method", "S256")
             .appendQueryParameter("code_challenge", codeChallenge)
@@ -55,33 +60,20 @@ class AndroidOAuthHandler(
     }
 
     override suspend fun authenticateTidal(clientId: String, clientSecret: String?): OAuthTokens? {
-        val state = UUID.randomUUID().toString()
-        val codeVerifier = generateCodeVerifier()
-        val codeChallenge = generateCodeChallenge(codeVerifier)
-        val redirectUri = "conduit://tidal/callback"
-        val scopes = "playlists.read playlists.write"
+        // Obsoleto, pero lo mantenemos por ahora si el interface lo requiere
+        return null
+    }
 
-        val deferred = CompletableDeferred<String?>()
-        pendingResult = deferred
+    override suspend fun getTidalDeviceCode(): TidalDeviceResponse? {
+        val clientId = settingsStorage.tidalClientId.takeIf { it.isNotBlank() } ?: Credentials.TIDAL_CLIENT_ID
+        return oauthRepository.getTidalDeviceCode(clientId)
+    }
 
-        val uri = Uri.parse("https://login.tidal.com/authorize")
-            .buildUpon()
-            .appendQueryParameter("client_id", clientId)
-            .appendQueryParameter("response_type", "code")
-            .appendQueryParameter("redirect_uri", redirectUri)
-            .appendQueryParameter("scope", scopes)
-            .appendQueryParameter("state", state)
-            .appendQueryParameter("code_challenge_method", "S256")
-            .appendQueryParameter("code_challenge", codeChallenge)
-            .build()
-
-        val intent = Intent(Intent.ACTION_VIEW, uri).apply {
+    override fun openTidalBrowser(url: String) {
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         context.startActivity(intent)
-
-        val code = deferred.await() ?: return null
-        return oauthRepository.exchangeCodeForTidalTokens(clientId, clientSecret, code, codeVerifier, redirectUri)
     }
 
     private fun generateCodeVerifier(): String {

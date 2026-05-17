@@ -15,100 +15,112 @@ class SyncPlaylistUseCase(
     private val syncEngine: SyncEngine,
 ) {
     companion object {
-        const val MAX_CONCURRENT_TRACKS = 5  // conservador para respetar rate limits
+        const val MAX_CONCURRENT_TRACKS = 5
     }
 
-    operator fun invoke(playlistId: String): Flow<SyncProgress> = flow {
-        val startTime        = Clock.System.now().toEpochMilliseconds()
-        val spotifyTracks    = spotifyRepo.getPlaylistTracks(playlistId)
-        val existingTidalIds = tidalRepo.getPlaylistTrackIds(playlistId).toMutableSet()
+    operator fun invoke(
+        spotifyPlaylistId: String,
+        spotifyPlaylistName: String,
+    ): Flow<SyncProgress> = flow {
+        val startTime = Clock.System.now().toEpochMilliseconds()
+        emit(SyncProgress.Started(spotifyPlaylistName))
 
-        val semaphore     = Semaphore(MAX_CONCURRENT_TRACKS)
-        val matched       = mutableListOf<MatchedTrack>()
-        val notFound      = mutableListOf<Track>()
-        val lowConfidence = mutableListOf<LowConfidenceMatch>()
-        val duplicates    = mutableListOf<Track>()
-        val blacklisted   = mutableListOf<Track>()
-        var processed     = 0
+        // 1. Obtener tracks de Spotify (paginado)
+        val spotifyTracks = spotifyRepo.getPlaylistTracks(spotifyPlaylistId)
+        emit(SyncProgress.TracksLoaded(spotifyTracks.size))
+
+        // 2. Encontrar o crear la playlist en Tidal
+        val tidalPlaylistId = tidalRepo.findOrCreatePlaylist(
+            name              = spotifyPlaylistName,
+            spotifyPlaylistId = spotifyPlaylistId,
+        )
+
+        // 3. Obtener tracks ya existentes en la playlist de Tidal
+        val existingTidalIds = tidalRepo.getPlaylistTrackIds(tidalPlaylistId)
+
+        println("DEBUG SYNC: playlist=$spotifyPlaylistName tracks=${spotifyTracks.size} tidalId=$tidalPlaylistId")
+
+        // 4. Procesar tracks en paralelo con semáforo
+        val semaphore   = Semaphore(MAX_CONCURRENT_TRACKS)
+        val matched     = mutableListOf<MatchedTrack>()
+        val notFound    = mutableListOf<Track>()
+        val lowConf     = mutableListOf<LowConfidenceMatch>()
+        val duplicates  = mutableListOf<Track>()
+        val blacklisted = mutableListOf<Track>()
+        var processed   = 0
 
         coroutineScope {
-            val deferredList = spotifyTracks.map { track ->
+            spotifyTracks.map { track ->
                 async {
                     semaphore.withPermit {
-                        track to syncEngine.findTidalTrack(track, playlistId, existingTidalIds)
+                        syncEngine.findTidalTrack(track, spotifyPlaylistId, existingTidalIds)
                     }
                 }
-            }
-
-            deferredList.forEach { deferred ->
-                val (spotifyTrack, result) = deferred.await()
+            }.forEach { deferred ->
+                val result = deferred.await()
                 processed++
 
                 when (result) {
-                    is MatchResult.Found -> {
-                        val matchedTrack = MatchedTrack(spotifyTrack, result.track, result.method, result.score)
-                        matched.add(matchedTrack)
-                        existingTidalIds.add(result.track.id)
-                    }
-                    is MatchResult.LowConfidence -> lowConfidence.add(LowConfidenceMatch(spotifyTrack, result.track, result.score))
-                    is MatchResult.Duplicate     -> duplicates.add(spotifyTrack)
-                    is MatchResult.NotFound      -> notFound.add(spotifyTrack)
-                    is MatchResult.Blacklisted   -> blacklisted.add(spotifyTrack)
+                    is MatchResult.Found -> matched.add(
+                        MatchedTrack(
+                            spotify = result.track.toSpotify(), // Placeholder conversion if needed, or update MatchedTrack
+                            tidal = result.track,
+                            method = result.method,
+                            score = result.score
+                        )
+                    )
+                    is MatchResult.LowConfidence -> lowConf.add(
+                        LowConfidenceMatch(
+                            spotify = result.track.toSpotify(),
+                            tidal = result.track,
+                            score = result.score
+                        )
+                    )
+                    is MatchResult.Duplicate    -> duplicates.add(result.track.toSpotify())
+                    is MatchResult.NotFound     -> notFound.add(result.spotifyTrack)
+                    is MatchResult.Blacklisted  -> blacklisted.add(result.spotifyTrack)
                 }
 
                 emit(SyncProgress.Running(
-                    current      = processed,
-                    total        = spotifyTracks.size,
-                    currentTrack = spotifyTrack.name,
-                    matched      = matched.size,
-                    notFound     = notFound.size,
-                    duplicates   = duplicates.size,
+                    current       = processed,
+                    total         = spotifyTracks.size,
+                    currentTrack  = result.trackName(),
+                    matched       = matched.size,
+                    notFound      = notFound.size,
+                    duplicates    = duplicates.size,
                 ))
             }
         }
 
-        // Add matched tracks to Tidal playlist in batches (max 50 per request)
-        if (matched.isNotEmpty()) {
-            tidalRepo.addTracksToPlaylist(playlistId, matched.map { it.tidal.id })
+        // 5. Agregar los tracks encontrados a la playlist de Tidal (en batch)
+        val tidalIdsToAdd = matched.map { it.tidal.id }
+        if (tidalIdsToAdd.isNotEmpty()) {
+            tidalRepo.addTracksToPlaylist(tidalPlaylistId, tidalIdsToAdd)
         }
 
         val endTime = Clock.System.now().toEpochMilliseconds()
+
+        // 6. Emitir resultado final
         emit(SyncProgress.Completed(
-            result = SyncResult(
-                id            = "sync_${endTime}",
-                playlistId    = playlistId,
-                playlistName  = spotifyTracks.firstOrNull()?.name ?: playlistId,
-                matched       = matched,
-                notFound      = notFound,
-                lowConfidence = lowConfidence,
-                duplicates    = duplicates,
-                blacklisted   = blacklisted,
-                durationMs    = endTime - startTime,
-                timestamp     = endTime,
-            ),
-            matched    = matched.size,
-            notFound   = notFound.size,
-            duplicates = duplicates.size,
-            durationMs = endTime - startTime,
+            playlistName  = spotifyPlaylistName,
+            matched       = matched.size,
+            notFound      = notFound.size,
+            lowConfidence = lowConf.size,
+            duplicates    = duplicates.size,
+            blacklisted   = blacklisted.size,
+            notFoundTracks= notFound,
+            lowConfTracks = lowConf,
+            durationMs    = endTime - startTime,
         ))
+
     }.flowOn(Dispatchers.IO)
 }
 
-sealed class SyncProgress {
-    data class Running(
-        val current: Int,
-        val total: Int,
-        val currentTrack: String,
-        val matched: Int,
-        val notFound: Int,
-        val duplicates: Int,
-    ) : SyncProgress()
-
-    data class Completed(
-        val result: SyncResult,
-        val matched: Int,
-        val notFound: Int,
-        val duplicates: Int,
-        val durationMs: Long,
-    ) : SyncProgress()
-}
+// Extension to map TidalTrack back to Spotify Track for UI/reporting if needed
+private fun TidalTrack.toSpotify() = Track(
+    id = id,
+    name = name,
+    artist = artist,
+    album = album,
+    durationMs = durationMs
+)

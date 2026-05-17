@@ -27,17 +27,10 @@ import org.koin.core.module.dsl.factoryOf
 
 import com.conduit.data.http.TokenRefreshPlugin
 
+import com.conduit.data.http.createHttpClient
+
 val appModule = module {
-    single { 
-        HttpClient {
-            install(ContentNegotiation) {
-                json(Json { 
-                    ignoreUnknownKeys = true 
-                    coerceInputValues = true
-                })
-            }
-        }
-    }
+    single { createHttpClient() }
     
     single { OAuthRepository(get()) }
     
@@ -69,6 +62,7 @@ val appModule = module {
     factoryOf(::GetPlaylistsUseCase)
     factoryOf(::BuildDiffUseCase)
     factoryOf(::SyncPlaylistUseCase)
+    factoryOf(::SyncAllPlaylistsUseCase)
 
     // ViewModels
     viewModelOf(::SettingsViewModel)

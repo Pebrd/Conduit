@@ -6,6 +6,7 @@ import com.conduit.domain.model.MusicService
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.request.*
+import io.ktor.client.statement.*
 import io.ktor.http.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -33,6 +34,7 @@ class SpotifyApiClient(
     }
 
     suspend fun getPlaylistTracks(playlistId: String): List<Track> = buildList {
+        println("DEBUG SPOTIFY TRACKS: fetching playlist $playlistId")
         val token = tokenRefreshPlugin.getValidToken("spotify")
         var nextUrl: String? = "https://api.spotify.com/v1/playlists/$playlistId/tracks?limit=100"
         
@@ -40,12 +42,13 @@ class SpotifyApiClient(
             val response = client.get(nextUrl) {
                 header(HttpHeaders.Authorization, "Bearer $token")
             }
+            val bodyString = response.bodyAsText()
+            println("DEBUG SPOTIFY RAW: status=${response.status} body=${bodyString.take(500)}")
+
             if (response.status != HttpStatusCode.OK) {
                 println("DEBUG: Spotify Tracks Error: ${response.status}")
                 break
             }
-            val bodyString = response.body<String>()
-            println("DEBUG: Spotify Tracks Raw JSON: $bodyString")
             
             val page = try {
                 Json { ignoreUnknownKeys = true }.decodeFromString<SpotifyPlaylistTracksDto>(bodyString)
@@ -56,6 +59,7 @@ class SpotifyApiClient(
             addAll(page.items.mapNotNull { it.track?.toDomain() })
             nextUrl = page.next
         }
+        println("DEBUG SPOTIFY TRACKS: got ${this.size} tracks, first=${this.firstOrNull()?.name}")
     }
 
     suspend fun getLikedSongs(): List<Track> = buildList {
@@ -85,12 +89,12 @@ internal data class SpotifyPlaylistDto(
     val id: String,
     val name: String,
     val images: List<SpotifyImageDto> = emptyList(),
-    @kotlinx.serialization.SerialName("items") val tracks: SpotifyTracksRef? = null,
+    @kotlinx.serialization.SerialName("tracks") val tracksRef: SpotifyTracksRef? = null,
 ) {
     fun toDomain() = Playlist(
         id = id,
         name = name,
-        trackCount = tracks?.total ?: 0,
+        trackCount = tracksRef?.total ?: 0,
         imageUrl = images.firstOrNull()?.url,
         source = MusicService.SPOTIFY
     )
@@ -98,8 +102,8 @@ internal data class SpotifyPlaylistDto(
 
 @Serializable
 internal data class SpotifyTracksRef(
-    val href: String,
-    val total: Int,
+    val href: String? = null,
+    val total: Int = 0,
 )
 
 @Serializable

@@ -11,6 +11,7 @@ fun createHttpClient(): HttpClient = HttpClient {
         json(Json {
             ignoreUnknownKeys = true
             isLenient = true
+            coerceInputValues = true
         }) 
     }
 

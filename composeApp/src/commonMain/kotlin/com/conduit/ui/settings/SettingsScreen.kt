@@ -191,6 +191,31 @@ fun SettingsScreen(
                 }
             }
 
+            // Accounts Section
+            SettingsSection(title = "CUENTAS") {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Spotify", style = MaterialTheme.typography.bodyMedium, color = Color.White)
+                    TextButton(onClick = { viewModel.disconnectSpotify() }) {
+                        Text("DESCONECTAR", color = ErrorRed, style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+                HorizontalDivider(color = DividerColor)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Tidal", style = MaterialTheme.typography.bodyMedium, color = Color.White)
+                    TextButton(onClick = { viewModel.disconnectTidal() }) {
+                        Text("DESCONECTAR", color = ErrorRed, style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+            }
+
             // Sync Settings
             SettingsSection(title = "SYNC CONFIGURATION") {
                 Text(
