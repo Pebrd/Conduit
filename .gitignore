@@ -9,3 +9,5 @@ local.properties
 *.enc
 **/Credentials.kt
 **/Credentials.kt.template
+*.keystore
+*.jks
