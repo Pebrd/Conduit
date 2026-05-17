@@ -11,3 +11,4 @@ local.properties
 **/Credentials.kt.template
 *.keystore
 *.jks
+keystore-credentials.md
