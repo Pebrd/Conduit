@@ -12,5 +12,6 @@ local.properties
 *.keystore
 *.jks
 keystore-credentials.md
+keystore_password.txt
 nox_repo/
 

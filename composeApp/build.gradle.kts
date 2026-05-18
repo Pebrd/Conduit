@@ -90,10 +90,23 @@ android {
         manifestPlaceholders["appAuthRedirectScheme"] = "conduit"
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = rootProject.file("conduit.keystore")
+            storePassword = "conduit123"
+            keyAlias = "conduit"
+            keyPassword = "conduit123"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.getByName("release")
+        }
+        debug {
+            applicationIdSuffix = ".debug"
         }
     }
 

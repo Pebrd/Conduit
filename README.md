@@ -83,9 +83,14 @@ For security reasons, Conduit **does not** hardcode API keys. You must provide y
 #### Android
 Open the project in Android Studio, select the `composeApp` run configuration targeting your Android Emulator or physical device, and click **Run**.
 Alternatively, via terminal:
-```bash
-./gradlew :composeApp:installDebug
-```
+- **Debug Build** (uses package `com.conduit.debug` allowing co-existence with release):
+  ```bash
+  ./gradlew :composeApp:installDebug
+  ```
+- **Release Build** (uses package `com.conduit` and is signed automatically with `conduit.keystore`):
+  ```bash
+  ./gradlew :composeApp:assembleRelease
+  ```
 
 #### Desktop (macOS, Windows, Linux)
 Run the following Gradle task to start the desktop app:
@@ -109,7 +114,7 @@ Conduit/
 
 We take security seriously. 
 - API keys, secrets, and User tokens are strictly handled locally. 
-- `local.properties` and keystore (`.jks`, `.keystore`) files are strictly ignored by `.gitignore`. 
+- `local.properties`, keystores (`.jks`, `.keystore`), and `keystore_password.txt` are strictly ignored by `.gitignore`. 
 - No credentials will be accidentally uploaded to this repository.
 
 ## 🤝 Contributing
