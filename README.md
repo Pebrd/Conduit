@@ -31,6 +31,23 @@ Built with **Compose Multiplatform**, the application provides a native, high-pe
 - **🎨 Premium UI/UX:** A sleek, responsive, and modern interface built entirely in Compose.
 - **🚀 Background Polling:** Non-blocking authorization polling and sync mechanisms to ensure a smooth user experience.
 
+## 🎨 Design System & Aesthetics (Nox)
+
+Conduit's premium interface is dynamically synchronized with the **Nox Design System** (defined in [pebrd/nox](https://github.com/pebrd/nox)). The application is designed to follow a high-contrast monochromatic brutalist style:
+
+- **⚫ AMOLED Absolute Black**: Sleek energy-saving dark palette (`ColorBgBase`, `ColorBgSurface`, `ColorBgSurface2` mapped straight from `NoxTokens`).
+- **📐 Flat Brutalist Shapes**: No rounded corners (`0.dp` border radius) for a technical, command-line inspired layout.
+- **🅰️ Custom Google Fonts**: Fully integrated with **IBM Plex Sans** (Light, Regular, SemiBold) for displays and bodies, and **IBM Plex Mono** (Light, Regular) for tags, track IDs, ISRCs, scores, and logs.
+
+### Dynamic Auto-Updating Tokens
+
+The design system auto-updates from GitHub on every compilation cycle:
+- **Gradle Task Automation**: The custom task `:composeApp:updateDesignTokens` is executed automatically before Kotlin compilation or resource generation. It pulls the latest commits from the `pebrd/nox` repository and copies `NoxTokens.kt` straight into our common Compose module.
+- **Manual Synchronization**: You can also trigger an on-demand update of the design tokens directly from your terminal using:
+  ```bash
+  ./update_tokens.sh
+  ```
+
 ## 🛠️ Technology Stack
 
 - **[Kotlin Multiplatform (KMP)](https://kotlinlang.org/docs/multiplatform.html):** Core business logic and architecture sharing.

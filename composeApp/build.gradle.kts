@@ -121,3 +121,53 @@ compose.desktop {
         }
     }
 }
+
+tasks.register("updateDesignTokens") {
+    group = "design"
+    description = "Updates the design tokens from the nox repository"
+    doLast {
+        val noxRepoDir = file("../../nox_repo")
+        try {
+            val process = if (noxRepoDir.exists()) {
+                println("Pulling latest design tokens from nox repository...")
+                ProcessBuilder("git", "pull")
+                    .directory(noxRepoDir)
+                    .inheritIO()
+                    .start()
+            } else {
+                println("nox_repo not found. Cloning repository...")
+                ProcessBuilder("git", "clone", "https://github.com/pebrd/nox.git", "nox_repo")
+                    .directory(file("../.."))
+                    .inheritIO()
+                    .start()
+            }
+            val exitCode = process.waitFor()
+            if (exitCode != 0) {
+                println("Warning: Git execution failed with exit code $exitCode. Using cached/local tokens.")
+            }
+        } catch (e: Exception) {
+            println("Warning: Failed to update design tokens repo: ${e.message}. Using cached/local tokens.")
+        }
+
+        val sourceFile = file("../../nox_repo/dist/kotlin/NoxTokens.kt")
+        val destFile = file("src/commonMain/kotlin/nox/designsystem/NoxTokens.kt")
+        if (sourceFile.exists()) {
+            println("Updating NoxTokens.kt...")
+            destFile.parentFile.mkdirs()
+            val content = sourceFile.readText()
+            destFile.writeText(content)
+            println("NoxTokens.kt successfully updated!")
+        } else {
+            if (!destFile.exists()) {
+                throw org.gradle.api.GradleException("NoxTokens.kt is missing and could not be fetched from nox_repo. Please check your internet connection.")
+            } else {
+                println("Warning: NoxTokens.kt not found in nox_repo, but local version exists. Keeping local version.")
+            }
+        }
+    }
+}
+
+tasks.matching { it.name.startsWith("compileKotlin") || it.name.startsWith("generate") }.configureEach {
+    dependsOn("updateDesignTokens")
+}
+

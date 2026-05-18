@@ -3,30 +3,24 @@ package com.conduit.ui.theme
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.text.font.FontFamily
+import nox.designsystem.NoxTokens
 
-import org.jetbrains.compose.resources.Font
-import conduit.composeapp.generated.resources.*
+// ── CONDUIT PREMIUM DESIGN SYSTEM ──
+// Auto-bound to Nox Design System (github.com/pebrd/nox)
 
-// Tipografía importada desde Type.kt
-
-// ── Colores AMOLED ────────────────────────────────────────────────────────────
-val AmoledBlack    = Color(0xFF000000)
-val SurfaceDark    = Color(0xFF0A0A0A)
-val SurfaceVariant = Color(0xFF111111)
-val DividerColor   = Color(0xFF1A1A1A)
-val AccentSage     = Color(0xFF9CAF88)   // Muted Sage color
-val AccentBlue     = Color(0xFF00BFFF)   // Tidal blue
-val OnSurface      = Color(0xFFEEEEEE)
-val OnSurfaceDim   = Color(0xFF888888)
-val ErrorRed       = Color(0xFFFF4444)
-val WarningYellow  = Color(0xFFFFBB00)
-val SuccessGreen   = Color(0xFF44BB44)
+val AmoledBlack    = NoxTokens.ColorBgBase          // AMOLED Black base
+val SurfaceDark    = NoxTokens.ColorBgSurface       // Nox primary surface
+val SurfaceVariant = NoxTokens.ColorBgSurface2      // Nox secondary surface
+val DividerColor   = NoxTokens.ColorBgBorder        // Nox border/divider color
+val AccentSage     = NoxTokens.ColorAccentDefault   // Steel default accent
+val AccentBlue     = NoxTokens.ColorAccentBlue      // Tidal blue weather accent
+val OnSurface      = NoxTokens.ColorTextPrimary     // Full white
+val OnSurfaceDim   = NoxTokens.ColorTextSecondary   // Muted gray
+val ErrorRed       = NoxTokens.ColorSemanticDanger
+val WarningYellow  = NoxTokens.ColorAccentYellow
+val SuccessGreen   = NoxTokens.ColorAccentDefault   // Steel default accent
 
 private val ColorScheme = darkColorScheme(
     background       = AmoledBlack,
@@ -40,14 +34,13 @@ private val ColorScheme = darkColorScheme(
     error            = ErrorRed,
 )
 
-
-// Sin bordes redondeados
+// Sharp brutalist borders as specified by NoxTokens
 private val Shapes = Shapes(
-    extraSmall = RoundedCornerShape(0.dp),
-    small      = RoundedCornerShape(0.dp),
-    medium     = RoundedCornerShape(0.dp),
-    large      = RoundedCornerShape(0.dp),
-    extraLarge = RoundedCornerShape(0.dp),
+    extraSmall = RoundedCornerShape(NoxTokens.BorderRadiusNone),
+    small      = RoundedCornerShape(NoxTokens.BorderRadiusNone),
+    medium     = RoundedCornerShape(NoxTokens.BorderRadiusNone),
+    large      = RoundedCornerShape(NoxTokens.BorderRadiusNone),
+    extraLarge = RoundedCornerShape(NoxTokens.BorderRadiusNone),
 )
 
 @Composable
@@ -59,3 +52,4 @@ fun ConduitTheme(content: @Composable () -> Unit) {
         content     = content,
     )
 }
+
