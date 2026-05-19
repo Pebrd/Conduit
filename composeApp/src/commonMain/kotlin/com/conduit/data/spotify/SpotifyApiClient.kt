@@ -129,21 +129,21 @@ internal data class SpotifyLikedTracksResponse(
 
 @Serializable
 internal data class SpotifyTrackDto(
-    val id: String,
-    val name: String,
-    val artists: List<SpotifyArtistDto>,
-    val album: SpotifyAlbumDto,
-    val duration_ms: Long,
+    val id: String? = null,
+    val name: String? = null,
+    val artists: List<SpotifyArtistDto>? = null,
+    val album: SpotifyAlbumDto? = null,
+    val duration_ms: Long? = null,
     val external_ids: ExternalIds? = null
 ) {
     fun toDomain() = Track(
-        id = id,
-        name = name,
-        artist = artists.joinToString(", ") { it.name },
-        album = album.name,
-        durationMs = duration_ms,
+        id = id ?: "",
+        name = name ?: "Unknown Track",
+        artist = artists?.joinToString(", ") { it.name } ?: "Unknown Artist",
+        album = album?.name ?: "Unknown Album",
+        durationMs = duration_ms ?: 0L,
         isrc = external_ids?.isrc,
-        imageUrl = album.images?.firstOrNull()?.url
+        imageUrl = album?.images?.firstOrNull()?.url
     )
 }
 
@@ -157,6 +157,6 @@ internal data class SpotifyArtistDto(val name: String)
 
 @Serializable
 internal data class SpotifyAlbumDto(
-    val name: String,
+    val name: String? = null,
     val images: List<SpotifyImageDto>? = null
 )

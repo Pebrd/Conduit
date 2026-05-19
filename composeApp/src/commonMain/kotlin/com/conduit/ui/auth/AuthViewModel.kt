@@ -75,47 +75,19 @@ class AuthViewModel(
         }
     }
 
-    @OptIn(DelicateCoroutinesApi::class)
     fun connectTidal() {
         viewModelScope.launch {
             _state.update { it.copy(isLoadingTidal = true, error = null) }
             try {
-                // 1. Obtener device code
-                val deviceResponse = oAuthHandler.getTidalDeviceCode() ?: run {
-                    _state.update { it.copy(
-                        isLoadingTidal = false,
-                        tidalStatus = ConnectionStatus.Error("Verifica el Client ID en Settings"),
-                        error = "No se pudo iniciar auth de Tidal"
-                    )}
-                    return@launch
-                }
-
-                // 2. Abrir browser
-                oAuthHandler.openTidalBrowser(deviceResponse.verificationUriComplete)
-
-                // 3. Polling en GlobalScope — sobrevive al background
-                GlobalScope.launch(Dispatchers.IO) {
-                    val tokens = oAuthRepository.pollTidalDeviceToken(
-                        clientId   = settingsStorage.tidalClientId.takeIf { it.isNotBlank() } ?: Credentials.TIDAL_CLIENT_ID,
-                        deviceCode = deviceResponse.deviceCode,
-                        interval   = deviceResponse.interval,
-                        expiresIn  = deviceResponse.expiresIn,
-                    )
-                    
-                    withContext(Dispatchers.Main) {
-                        if (tokens != null) {
-                            tokenStorage.saveTokens("tidal", tokens.accessToken, tokens.refreshToken, tokens.expiresAt)
-                            _state.update { it.copy(
-                                tidalStatus   = ConnectionStatus.Connected(),
-                                isLoadingTidal = false,
-                            )}
-                        } else {
-                            _state.update { it.copy(
-                                tidalStatus   = ConnectionStatus.Error("Auth expirada o cancelada"),
-                                isLoadingTidal = false,
-                            )}
-                        }
-                    }
+                val clientId = settingsStorage.tidalClientId.takeIf { it.isNotBlank() }
+                    ?: Credentials.TIDAL_CLIENT_ID
+                val clientSecret = settingsStorage.tidalClientSecret.takeIf { it.isNotBlank() }
+                val tokens = oAuthHandler.authenticateTidal(clientId, clientSecret)
+                if (tokens != null) {
+                    tokenStorage.saveTokens("tidal", tokens.accessToken, tokens.refreshToken, tokens.expiresAt)
+                    _state.update { it.copy(tidalStatus = ConnectionStatus.Connected(), isLoadingTidal = false) }
+                } else {
+                    _state.update { it.copy(tidalStatus = ConnectionStatus.Error("Cancelado"), isLoadingTidal = false) }
                 }
             } catch (e: Exception) {
                 _state.update { it.copy(tidalStatus = ConnectionStatus.Error(e.message ?: "Error"), isLoadingTidal = false) }

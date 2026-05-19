@@ -29,18 +29,12 @@
         <activity
             android:name=".platform.OAuthCallbackActivity"
             android:exported="true"
-            android:launchMode="singleTop">
+            android:launchMode="singleTask">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
-                <data android:scheme="conduit" android:host="spotify"/>
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW"/>
-                <category android:name="android.intent.category.DEFAULT"/>
-                <category android:name="android.intent.category.BROWSABLE"/>
-                <data android:scheme="conduit" android:host="tidal"/>
+                <data android:scheme="conduit" android:host="tidal-callback"/>
             </intent-filter>
         </activity>
 

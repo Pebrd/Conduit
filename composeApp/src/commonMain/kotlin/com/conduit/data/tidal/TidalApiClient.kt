@@ -37,20 +37,23 @@ class TidalApiClient(
     private suspend fun getUserId(): String {
         cachedUserId?.let { return it }
         val token = tokenRefreshPlugin.getValidToken("tidal")
-
-        val response = client.get("https://api.tidal.com/v1/sessions") {
-            header(HttpHeaders.Authorization, "Bearer $token")
-        }
-        val body = response.bodyAsText()
-        println("DEBUG TIDAL SESSIONS: status=${response.status} body=${body.take(300)}")
-
-        if (!response.status.isSuccess()) {
-            throw Exception("Failed to get Tidal session: ${response.status} - ${body.take(200)}")
+        
+        println("DEBUG TIDAL REBUILD: Obteniendo User ID con el nuevo servicio...")
+        val tidalService = TidalService(client)
+        val sessionsBody = tidalService.getUserId(token)
+        
+        if (sessionsBody == null) {
+            throw Exception("No se pudo obtener la sesión de Tidal. Por favor, reconecta.")
         }
 
-        return json.parseToJsonElement(body)
-            .jsonObject["userId"]!!.jsonPrimitive.content
-            .also { cachedUserId = it }
+        return try {
+            json.parseToJsonElement(sessionsBody)
+                .jsonObject["userId"]!!.jsonPrimitive.content
+                .also { cachedUserId = it }
+        } catch (e: Exception) {
+            println("DEBUG TIDAL ERROR PARSING SESSION: $sessionsBody")
+            throw Exception("Error al procesar la sesión de Tidal: ${e.message}")
+        }
     }
 
     suspend fun getPlaylists(): List<Playlist> {
