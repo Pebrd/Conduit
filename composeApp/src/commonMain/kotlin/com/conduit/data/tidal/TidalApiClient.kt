@@ -172,7 +172,7 @@ class TidalApiClient(
         }
     }
 
-    suspend fun searchTracks(query: String, limit: Int = 10): List<TidalTrack> {
+    suspend fun searchTracks(query: String, limit: Int = 30): List<TidalTrack> {
         return try {
             val token = tokenRefreshPlugin.getValidToken("tidal")
             val response = client.get("https://listen.tidal.com/v1/search/tracks") {
@@ -395,6 +395,7 @@ class TidalApiClient(
             val response = client.get("https://listen.tidal.com/v1/albums/$albumId/tracks") {
                 header(HttpHeaders.Authorization, "Bearer $token")
                 parameter("countryCode", "AR")
+                parameter("limit", 100)
             }
             if (response.status != HttpStatusCode.OK) return emptyList()
 

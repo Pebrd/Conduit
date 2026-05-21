@@ -135,9 +135,12 @@ class SyncEngine(
 
     fun normalize(s: String): String = s
         .lowercase()
+        // Strip common tags in parentheses
         .replace(Regex("""\(feat\.?[^)]*\)|\(ft\.?[^)]*\)|\(with [^)]*\)"""), "")
-        .replace(Regex("""\[[^]]*\]"""), "")
         .replace(Regex("""\((remaster|live|acoustic|radio edit|extended|deluxe|demo|instrumental|version|edit)[^)]*\)""", RegexOption.IGNORE_CASE), "")
+        // Strip common tags after a dash
+        .replace(Regex(""" - (remaster|live|acoustic|radio edit|extended|deluxe|demo|instrumental|version|edit).*""", RegexOption.IGNORE_CASE), "")
+        .replace(Regex("""\[[^]]*\]"""), "")
         .replace(Regex("""[^a-z0-9 ]"""), "")
         .replace(Regex("""\s+"""), " ")
         .trim()
