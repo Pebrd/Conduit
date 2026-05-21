@@ -28,5 +28,8 @@ class SettingsStorage(private val settings: Settings) {
 
     fun getScopesVersion(): Int = settings.getInt("scopes_version", 0)
     fun saveScopesVersion(version: Int) = settings.putInt("scopes_version", version)
+
+    fun getMappedTidalPlaylist(spotifyId: String): String? = settings.getStringOrNull("mapped_playlist_$spotifyId")
+    fun saveMappedTidalPlaylist(spotifyId: String, tidalId: String) = settings.putString("mapped_playlist_$spotifyId", tidalId)
 }
  

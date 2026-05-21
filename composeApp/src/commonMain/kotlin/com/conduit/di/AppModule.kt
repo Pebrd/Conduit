@@ -54,7 +54,7 @@ val appModule = module {
     single { TidalApiClient(get(), get(), get()) }
     
     single<SpotifyRepository> { SpotifyRepositoryImpl(get()) }
-    single<TidalRepository> { TidalRepositoryImpl(get()) }
+    single<TidalRepository> { TidalRepositoryImpl(get(), get()) }
     
     single { SyncEngine(get(), get(), get()) }
     
