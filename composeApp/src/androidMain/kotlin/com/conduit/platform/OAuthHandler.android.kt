@@ -60,12 +60,12 @@ class AndroidOAuthHandler(
     }
 
     override suspend fun authenticateTidal(clientId: String, clientSecret: String?): OAuthTokens? {
-        val newClientId = "V5HLp4iLaNh41xvj"
+        val clientId = settingsStorage.tidalClientId.takeIf { it.isNotBlank() } ?: "V5HLp4iLaNh41xvj"
         val state = UUID.randomUUID().toString()
         val codeVerifier = generateCodeVerifier()
         val codeChallenge = generateCodeChallenge(codeVerifier)
         val redirectUri = "conduit://tidal-callback"
-        val scopes = "user.read collection.read"
+        val scopes = "user.read collection.read collection.write playlists.write"
 
         val deferred = CompletableDeferred<String?>()
         pendingResult = deferred
@@ -73,7 +73,7 @@ class AndroidOAuthHandler(
         val uri = Uri.parse("https://login.tidal.com/authorize")
             .buildUpon()
             .appendQueryParameter("response_type", "code")
-            .appendQueryParameter("client_id", newClientId)
+            .appendQueryParameter("client_id", clientId)
             .appendQueryParameter("redirect_uri", redirectUri)
             .appendQueryParameter("scope", scopes)
             .appendQueryParameter("state", state)
@@ -86,11 +86,11 @@ class AndroidOAuthHandler(
         openTidalBrowser(finalUrl)
 
         val code = deferred.await() ?: return null
-        return oauthRepository.exchangeCodeForTidalTokens(newClientId, clientSecret, code, codeVerifier, redirectUri)
+        return oauthRepository.exchangeCodeForTidalTokens(clientId, clientSecret, code, codeVerifier, redirectUri)
     }
 
     override suspend fun getTidalDeviceCode(): TidalDeviceResponse? {
-        val clientId = "V5HLp4iLaNh41xvj"
+        val clientId = settingsStorage.tidalClientId.takeIf { it.isNotBlank() } ?: "V5HLp4iLaNh41xvj"
         return oauthRepository.getTidalDeviceCode(clientId)
     }
 

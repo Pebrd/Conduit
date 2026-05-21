@@ -22,6 +22,10 @@ class SettingsStorage(private val settings: Settings) {
         get() = settings.getInt("sync_interval_hours", 24)
         set(value) = settings.putInt("sync_interval_hours", value)
 
+    var tidalUserId: String
+        get() = settings.getString("tidal_user_id", "")
+        set(value) = settings.putString("tidal_user_id", value)
+
     fun getScopesVersion(): Int = settings.getInt("scopes_version", 0)
     fun saveScopesVersion(version: Int) = settings.putInt("scopes_version", version)
 }

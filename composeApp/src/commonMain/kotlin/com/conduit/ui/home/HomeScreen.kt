@@ -83,34 +83,55 @@ fun PlaylistRow(
     playlist: Playlist,
     onClick: () -> Unit
 ) {
-    Row(
+    Card(
         modifier = Modifier
             .fillMaxWidth()
-            .background(SurfaceVariant)
-            .clickable(onClick = onClick)
-            .padding(12.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
+        shape = MaterialTheme.shapes.medium
     ) {
-        AsyncImage(
-            model = playlist.imageUrl,
-            contentDescription = null,
-            modifier = Modifier.size(60.dp).background(Color.DarkGray),
-            contentScale = ContentScale.Crop
-        )
-        
-        Spacer(modifier = Modifier.width(16.dp))
-        
-        Column {
-            Text(
-                text = playlist.name,
-                style = MaterialTheme.typography.titleMedium,
-                color = Color.White
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            AsyncImage(
+                model = playlist.imageUrl,
+                contentDescription = null,
+                modifier = Modifier
+                    .size(64.dp)
+                    .background(Color.DarkGray, MaterialTheme.shapes.small),
+                contentScale = ContentScale.Crop
             )
-            Text(
-                text = "${playlist.trackCount} tracks",
-                style = MaterialTheme.typography.bodySmall,
-                color = OnSurfaceDim
-            )
+            
+            Spacer(modifier = Modifier.width(16.dp))
+            
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = playlist.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Color.White,
+                    maxLines = 1
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    val serviceColor = if (playlist.source == com.conduit.domain.model.MusicService.SPOTIFY) 
+                        Color(0xFF1DB954) else Color(0xFF00FFFF)
+                    
+                    Text(
+                        text = playlist.source.name,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = serviceColor
+                    )
+                    Text(
+                        text = " • ",
+                        color = Color.Gray
+                    )
+                    Text(
+                        text = "${playlist.trackCount} canciones",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.LightGray
+                    )
+                }
+            }
         }
     }
 }

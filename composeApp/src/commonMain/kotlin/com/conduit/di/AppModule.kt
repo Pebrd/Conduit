@@ -32,7 +32,7 @@ import com.conduit.data.http.createHttpClient
 val appModule = module {
     single { createHttpClient() }
     
-    single { OAuthRepository(get()) }
+    single { OAuthRepository(get(), get()) }
     
     single { TokenStorage(get()) }
     single<com.conduit.data.http.TokenStorage> { get<TokenStorage>() }

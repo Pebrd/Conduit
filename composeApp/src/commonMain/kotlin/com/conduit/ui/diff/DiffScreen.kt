@@ -25,7 +25,7 @@ import org.koin.compose.viewmodel.koinViewModel
 fun DiffScreen(
     playlistId: String,
     viewModel: DiffViewModel = koinViewModel(),
-    onSyncClick: (String) -> Unit = {},
+    onSyncClick: (String, String) -> Unit = { _, _ -> },
     onBack: () -> Unit = {}
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -46,7 +46,7 @@ fun DiffScreen(
         },
         bottomBar = {
             Button(
-                onClick = { onSyncClick(playlistId) },
+                onClick = { onSyncClick(playlistId, state.playlistName) },
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
                 shape = MaterialTheme.shapes.extraSmall
             ) {

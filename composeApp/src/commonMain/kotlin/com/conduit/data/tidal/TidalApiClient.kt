@@ -194,28 +194,67 @@ class TidalApiClient(
     }
 
     /**
-     * Busca un track por ISRC usando el endpoint de search y filtrando por ISRC exacto.
-     * La API v1 no tiene endpoint dedicado /tracks?isrc=X.
+     * Busca un track por ISRC usando el endpoint oficial v2 GET /tracks?filter[isrc]=...
+     * Mucho más confiable que la búsqueda de texto v1.
+     * El artista se resuelve desde el array `included` de la respuesta JSON:API.
      */
     suspend fun searchByIsrc(isrc: String): TidalTrack? {
         return try {
             val token = tokenRefreshPlugin.getValidToken("tidal")
-            val response = client.get("https://listen.tidal.com/v1/search/tracks") {
+            val response = client.get("https://openapi.tidal.com/v2/tracks") {
                 header(HttpHeaders.Authorization, "Bearer $token")
-                parameter("query", isrc)
-                parameter("limit", 5)
+                header(HttpHeaders.Accept, "application/vnd.api+json")
+                parameter("filter[isrc]", isrc)
+                parameter("include", "artists")
                 parameter("countryCode", "AR")
             }
-            if (response.status != HttpStatusCode.OK) return null
+            val bodyText = response.bodyAsText()
+            println("DEBUG TIDAL ISRC v2: status=${response.status} isrc=$isrc body=${bodyText.take(300)}")
+            if (!response.status.isSuccess()) return null
 
-            val items = json.parseToJsonElement(response.bodyAsText())
-                .jsonObject["items"]?.jsonArray ?: return null
+            val bodyObj = json.parseToJsonElement(bodyText).jsonObject
+            val dataArr = bodyObj["data"]?.jsonArray ?: return null
+            if (dataArr.isEmpty()) return null
 
-            // Filtrar por ISRC exacto del lado del cliente
-            items.map { parseTidalTrack(it.jsonObject) }
-                .firstOrNull { it.isrc?.equals(isrc, ignoreCase = true) == true }
+            // Construir mapa de artistas desde `included`
+            val artistNameById = mutableMapOf<String, String>()
+            bodyObj["included"]?.jsonArray?.forEach { inc ->
+                val incObj = inc.jsonObject
+                if (incObj["type"]?.jsonPrimitive?.content == "artists") {
+                    val id   = incObj["id"]?.jsonPrimitive?.content ?: return@forEach
+                    val name = incObj["attributes"]?.jsonObject?.get("name")?.jsonPrimitive?.contentOrNull ?: return@forEach
+                    artistNameById[id] = name
+                }
+            }
+
+            // Parsear el primer track del data array
+            val trackObj   = dataArr[0].jsonObject
+            val id         = trackObj["id"]?.jsonPrimitive?.content ?: return null
+            val attributes = trackObj["attributes"]?.jsonObject ?: return null
+            val title      = attributes["title"]?.jsonPrimitive?.content ?: ""
+            val trackIsrc  = attributes["isrc"]?.jsonPrimitive?.contentOrNull
+            val durationIso = attributes["duration"]?.jsonPrimitive?.contentOrNull ?: "PT0S"
+            val durationMs = parseIso8601DurationMs(durationIso)
+
+            // Resolver artistas desde relationships
+            val artistIds = trackObj["relationships"]?.jsonObject
+                ?.get("artists")?.jsonObject
+                ?.get("data")?.jsonArray
+                ?.mapNotNull { it.jsonObject["id"]?.jsonPrimitive?.content }
+                ?: emptyList()
+            val artist = artistIds.mapNotNull { artistNameById[it] }.joinToString(", ")
+                .ifBlank { "Unknown Artist" }
+
+            TidalTrack(
+                id         = id,
+                name       = title,
+                artist     = artist,
+                album      = "Unknown Album", // albums no vienen en este endpoint sin include=albums
+                durationMs = durationMs,
+                isrc       = trackIsrc,
+            )
         } catch (e: Exception) {
-            println("DEBUG: Tidal searchByIsrc failed for '$isrc': ${e.message}")
+            println("DEBUG: Tidal searchByIsrc v2 failed for '$isrc': ${e.message}")
             null
         }
     }
@@ -388,7 +427,7 @@ class TidalApiClient(
     // ── Helpers ──────────────────────────────────────────────────────────────
 
     /**
-     * Parsea un TidalTrack desde un JsonObject.
+     * Parsea un TidalTrack desde un JsonObject de la API v1 (listen.tidal.com).
      * - Parsea TODOS los artistas (no solo el primero)
      * - Convierte duration de segundos a milisegundos
      * - Extrae ISRC si está disponible
@@ -415,5 +454,17 @@ class TidalApiClient(
         return artists.mapNotNull { artist ->
             artist.jsonObject["name"]?.jsonPrimitive?.contentOrNull
         }.joinToString(", ").ifBlank { "Unknown Artist" }
+    }
+
+    /**
+     * Convierte duración ISO 8601 (ej. "PT3M42S", "PT58S", "PT1H2M3S") a milisegundos.
+     * Necesario para parsear el campo `duration` de la API v2.
+     */
+    private fun parseIso8601DurationMs(iso: String): Long {
+        // Regex: PT[xH][xM][xS]
+        val hours   = Regex("(\\d+)H").find(iso)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+        val minutes = Regex("(\\d+)M").find(iso)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+        val seconds = Regex("(\\d+(?:\\.\\d+)?)S").find(iso)?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
+        return (hours * 3600 + minutes * 60) * 1000 + (seconds * 1000).toLong()
     }
 }

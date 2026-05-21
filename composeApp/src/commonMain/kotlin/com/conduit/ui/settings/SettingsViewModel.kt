@@ -10,6 +10,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import com.conduit.data.auth.OAuthRepository
+import com.conduit.data.auth.TidalDeviceResponse
 
 data class SettingsUiState(
     val spotifyClientId: String = "",
@@ -20,13 +22,16 @@ data class SettingsUiState(
     val isTidalConnected: Boolean = false,
     val isLoading: Boolean = false,
     val loadingMessage: String? = null,
-    val error: String? = null
+    val error: String? = null,
+    val tidalDeviceCode: String? = null,
+    val tidalVerificationUri: String? = null
 )
 
 class SettingsViewModel(
     private val settingsStorage: SettingsStorage,
     private val tokenStorage: TokenStorage,
-    private val oauthHandler: OAuthHandler
+    private val oauthHandler: OAuthHandler,
+    private val oAuthRepository: OAuthRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -92,20 +97,17 @@ class SettingsViewModel(
     fun connectTidal() {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
-            try {
-                val clientId = uiState.value.tidalClientId.takeIf { it.isNotBlank() }
-                    ?: Credentials.TIDAL_CLIENT_ID
-                val clientSecret = uiState.value.tidalClientSecret.takeIf { it.isNotBlank() }
-                val tokens = oauthHandler.authenticateTidal(clientId, clientSecret)
-                if (tokens != null) {
-                    tokenStorage.saveTokens("tidal", tokens.accessToken, tokens.refreshToken, tokens.expiresAt)
-                    _uiState.update { it.copy(isTidalConnected = true) }
-                }
-            } catch (e: Exception) {
-                _uiState.update { it.copy(error = e.message) }
-            } finally {
-                _uiState.update { it.copy(isLoading = false, loadingMessage = null) }
+            val clientId = _uiState.value.tidalClientId.takeIf { it.isNotBlank() } ?: "zU9z97ru3C9vB9C9"
+            val clientSecret = _uiState.value.tidalClientSecret.takeIf { it.isNotBlank() }
+            
+            val tokens = oauthHandler.authenticateTidal(clientId, clientSecret)
+            if (tokens != null) {
+                tokenStorage.saveTokens("tidal", tokens.accessToken, tokens.refreshToken, tokens.expiresAt)
+                _uiState.update { it.copy(isTidalConnected = true) }
+            } else {
+                _uiState.update { it.copy(error = "Error al conectar con Tidal") }
             }
+            _uiState.update { it.copy(isLoading = false) }
         }
     }
 

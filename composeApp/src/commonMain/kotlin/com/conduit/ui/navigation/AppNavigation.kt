@@ -153,7 +153,10 @@ fun AppNavHost(navController: androidx.navigation.NavHostController) {
             val playlistId = backStackEntry.arguments?.getString("playlistId") ?: return@composable
             DiffScreen(
                 playlistId = playlistId,
-                onSyncClick = { id -> navController.navigate("sync/$id/Syncing...") },
+                onSyncClick = { id, name -> 
+                    val encodedName = name.replace("/", " ").replace("?", "")
+                    navController.navigate("sync/$id/$encodedName") 
+                },
                 onBack = { navController.popBackStack() }
             )
         }

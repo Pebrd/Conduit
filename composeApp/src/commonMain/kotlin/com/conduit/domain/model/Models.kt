@@ -92,6 +92,7 @@ data class OAuthTokens(
     val accessToken: String,
     val refreshToken: String,
     val expiresAt: Long,
+    val userId: String? = null
 )
 
 enum class MusicService { SPOTIFY, TIDAL }

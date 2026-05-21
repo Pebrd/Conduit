@@ -10,13 +10,15 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 data class DiffUiState(
+    val playlistName: String = "",
     val diffEntries: List<DiffEntry> = emptyList(),
     val isLoading: Boolean = false,
     val error: String? = null
 )
 
 class DiffViewModel(
-    private val buildDiffUseCase: BuildDiffUseCase
+    private val buildDiffUseCase: BuildDiffUseCase,
+    private val spotifyRepo: com.conduit.domain.repository.SpotifyRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(DiffUiState())
@@ -26,9 +28,12 @@ class DiffViewModel(
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
             try {
-                // For now, we don't have the tidalPlaylistId, so we pass null
+                // Obtener nombre de la playlist para la UI y para el paso siguiente
+                val playlists = spotifyRepo.getPlaylists()
+                val name = playlists.firstOrNull { it.id == playlistId }?.name ?: "Playlist"
+                
                 val diff = buildDiffUseCase(playlistId, null)
-                _uiState.update { it.copy(diffEntries = diff) }
+                _uiState.update { it.copy(diffEntries = diff, playlistName = name) }
             } catch (e: Exception) {
                 _uiState.update { it.copy(error = e.message) }
             } finally {

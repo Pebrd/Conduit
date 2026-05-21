@@ -23,6 +23,8 @@ data class AuthUiState(
     val isLoadingSpotify: Boolean = false,
     val isLoadingTidal: Boolean = false,
     val error: String? = null,
+    val tidalDeviceCode: String? = null,
+    val tidalVerificationUri: String? = null,
 )
 
 sealed class ConnectionStatus {
@@ -78,19 +80,53 @@ class AuthViewModel(
     fun connectTidal() {
         viewModelScope.launch {
             _state.update { it.copy(isLoadingTidal = true, error = null) }
-            try {
-                val clientId = settingsStorage.tidalClientId.takeIf { it.isNotBlank() }
-                    ?: Credentials.TIDAL_CLIENT_ID
-                val clientSecret = settingsStorage.tidalClientSecret.takeIf { it.isNotBlank() }
-                val tokens = oAuthHandler.authenticateTidal(clientId, clientSecret)
+            
+            val clientId = settingsStorage.tidalClientId.takeIf { it.isNotBlank() } ?: "V5HLp4iLaNh41xvj"
+            
+            // Intentamos primero Device Flow que es lo más fiable
+            val deviceResponse = oAuthRepository.getTidalDeviceCode(clientId)
+            if (deviceResponse != null) {
+                _state.update { 
+                    it.copy(
+                        tidalDeviceCode = deviceResponse.userCode,
+                        tidalVerificationUri = "https://" + deviceResponse.verificationUriComplete,
+                        isLoadingTidal = false
+                    ) 
+                }
+                
+                // Abrimos el navegador automáticamente para el usuario
+                oAuthHandler.openTidalBrowser("https://" + deviceResponse.verificationUriComplete)
+
+                // Empezamos el polling
+                val tokens = oAuthRepository.pollTidalDeviceToken(
+                    clientId = clientId,
+                    deviceCode = deviceResponse.deviceCode,
+                    interval = deviceResponse.interval,
+                    expiresIn = deviceResponse.expiresIn
+                )
+
                 if (tokens != null) {
                     tokenStorage.saveTokens("tidal", tokens.accessToken, tokens.refreshToken, tokens.expiresAt)
-                    _state.update { it.copy(tidalStatus = ConnectionStatus.Connected(), isLoadingTidal = false) }
+                    _state.update { 
+                        it.copy(
+                            tidalStatus = ConnectionStatus.Connected("Tidal User"),
+                            tidalDeviceCode = null,
+                            tidalVerificationUri = null
+                        ) 
+                    }
                 } else {
-                    _state.update { it.copy(tidalStatus = ConnectionStatus.Error("Cancelado"), isLoadingTidal = false) }
+                    _state.update { it.copy(error = "Tidal connection timed out or failed") }
                 }
-            } catch (e: Exception) {
-                _state.update { it.copy(tidalStatus = ConnectionStatus.Error(e.message ?: "Error"), isLoadingTidal = false) }
+            } else {
+                // Si falla el device flow, intentamos el normal (fallback)
+                val tokens = oAuthHandler.authenticateTidal(clientId, null)
+                if (tokens != null) {
+                    tokenStorage.saveTokens("tidal", tokens.accessToken, tokens.refreshToken, tokens.expiresAt)
+                    _state.update { it.copy(tidalStatus = ConnectionStatus.Connected("Tidal User")) }
+                } else {
+                    _state.update { it.copy(error = "Failed to connect to Tidal") }
+                }
+                _state.update { it.copy(isLoadingTidal = false) }
             }
         }
     }

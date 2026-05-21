@@ -12,6 +12,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.Alignment
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.OpenInNew
@@ -149,6 +151,14 @@ fun SettingsScreen(
 
             // Tidal Section
             SettingsSection(title = "TIDAL") {
+                if (state.error != null) {
+                    Text(
+                        text = state.error!!,
+                        color = ErrorRed,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     OutlinedTextField(
                         value = state.tidalClientId,
@@ -177,6 +187,35 @@ fun SettingsScreen(
                 
                 Spacer(modifier = Modifier.height(8.dp))
                 
+                val deviceCode = state.tidalDeviceCode
+                if (deviceCode != null) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.1f)),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.secondary)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text("CÓDIGO DE VINCULACIÓN", style = MaterialTheme.typography.labelSmall, color = OnSurfaceDim)
+                            Text(
+                                deviceCode,
+                                style = MaterialTheme.typography.headlineLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.secondary
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                "Introduce este código en la web de Tidal que se ha abierto.",
+                                style = MaterialTheme.typography.bodySmall,
+                                textAlign = TextAlign.Center,
+                                color = OnSurfaceDim
+                            )
+                        }
+                    }
+                }
+
                 Button(
                     onClick = viewModel::connectTidal,
                     modifier = Modifier.fillMaxWidth(),
