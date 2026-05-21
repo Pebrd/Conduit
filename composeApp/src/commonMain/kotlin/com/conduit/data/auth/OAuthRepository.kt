@@ -18,7 +18,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.conduit.platform.TidalDeviceResponse
 
-class OAuthRepository(private val client: HttpClient) {
+class OAuthRepository(
+    private val client: HttpClient,
+    private val settingsStorage: com.conduit.data.local.SettingsStorage
+) {
 
     suspend fun exchangeCodeForSpotifyTokens(
         clientId: String,
@@ -65,11 +68,19 @@ class OAuthRepository(private val client: HttpClient) {
         val response = tidalService.exchangeCode(clientId, clientSecret, code, codeVerifier, redirectUri)
         
         return response?.let { data ->
+            val uid = data.user_id?.toString() ?: ""
+            println("DEBUG TIDAL REPO: GUARDANDO ID DIRECTO: $uid")
+            settingsStorage.tidalUserId = uid
+            
             OAuthTokens(
                 accessToken = data.access_token,
                 refreshToken = data.refresh_token ?: "",
-                expiresAt = Clock.System.now().toEpochMilliseconds() + (data.expires_in * 1000)
+                expiresAt = Clock.System.now().toEpochMilliseconds() + (data.expires_in * 1000),
+                userId = uid
             )
+        } ?: run {
+            println("DEBUG TIDAL REPO: La respuesta del servicio fue NULA")
+            null
         }
     }
 
@@ -124,35 +135,25 @@ class OAuthRepository(private val client: HttpClient) {
     }
 
     suspend fun getTidalDeviceCode(clientId: String): TidalDeviceResponse? {
-        return try {
-            val response = client.submitForm(
-                url = "https://auth.tidal.com/v1/oauth2/device_authorization",
-                formParameters = parameters {
-                    append("client_id", clientId)
-                    // r_usr w_usr son necesarios para api.tidal.com/v1/sessions
-                    // y listen.tidal.com/v1 endpoints. w_sub a veces está restringido.
-                    append("scope", "r_usr w_usr")
-                }
-            )
-            val bodyText = response.bodyAsText()
-            println("DEBUG TIDAL DEVICE AUTH: status=${response.status} body=${bodyText.take(300)}")
-
-            if (response.status == HttpStatusCode.OK) {
-                val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
-                json.decodeFromString<TidalDeviceResponse>(bodyText)
-            } else {
-                val errorBody = response.bodyAsText()
-                val errorDesc = try {
-                    Json.parseToJsonElement(errorBody).jsonObject["error_description"]?.jsonPrimitive?.content
-                } catch (e: Exception) { null } ?: "Unknown error"
-                
-                println("DEBUG TIDAL DEVICE AUTH FAILED: status=${response.status} body=$errorBody")
-                throw Exception("Tidal Auth Error: $errorDesc")
+        val response = client.submitForm(
+            url = "https://auth.tidal.com/v1/oauth2/device_authorization",
+            formParameters = parameters {
+                append("client_id", clientId)
+                append("scope", "r_usr w_usr playlists.read playlists.write")
             }
-        } catch (e: Exception) {
-            println("DEBUG TIDAL DEVICE AUTH EXCEPTION: ${e.message}")
-            e.printStackTrace()
-            null
+        )
+        val bodyText = response.bodyAsText()
+        println("DEBUG TIDAL DEVICE AUTH: status=${response.status} body=${bodyText.take(300)}")
+
+        if (response.status == HttpStatusCode.OK) {
+            val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+            return json.decodeFromString<TidalDeviceResponse>(bodyText)
+        } else {
+            val errorDesc = try {
+                Json.parseToJsonElement(bodyText).jsonObject["error_description"]?.jsonPrimitive?.content
+            } catch (e: Exception) { null } ?: "Unknown error"
+            
+            throw Exception("Tidal API Error: $errorDesc (${response.status})")
         }
     }
 
@@ -176,7 +177,7 @@ class OAuthRepository(private val client: HttpClient) {
                         append("device_code", deviceCode)
                         append("grant_type", "urn:ietf:params:oauth:grant-type:device_code")
                         // No es estrictamente necesario repetir el scope aquí, pero si se hace debe coincidir
-                        append("scope", "r_usr w_usr")
+                        append("scope", "r_usr w_usr playlists.read playlists.write")
                     }
                 )
 
@@ -235,3 +236,13 @@ class OAuthRepository(private val client: HttpClient) {
         val token_type: String
     )
 }
+
+@Serializable
+data class TidalDeviceResponse(
+    @SerialName("device_code") val deviceCode: String,
+    @SerialName("user_code") val userCode: String,
+    @SerialName("verification_uri") val verificationUri: String,
+    @SerialName("verification_uri_complete") val verificationUriComplete: String,
+    @SerialName("expires_in") val expiresIn: Int,
+    val interval: Int
+)

@@ -36,9 +36,15 @@ class TidalApiClient(
      */
     private suspend fun getUserId(): String {
         cachedUserId?.let { return it }
+        val storedId = settingsStorage.tidalUserId
+        if (storedId.isNotBlank()) {
+            cachedUserId = storedId
+            return storedId
+        }
+
         val token = tokenRefreshPlugin.getValidToken("tidal")
         
-        println("DEBUG TIDAL REBUILD: Obteniendo User ID con el nuevo servicio...")
+        println("DEBUG TIDAL REBUILD: Obteniendo User ID de la sesión...")
         val tidalService = TidalService(client)
         val sessionsBody = tidalService.getUserId(token)
         
@@ -49,7 +55,10 @@ class TidalApiClient(
         return try {
             json.parseToJsonElement(sessionsBody)
                 .jsonObject["userId"]!!.jsonPrimitive.content
-                .also { cachedUserId = it }
+                .also { 
+                    cachedUserId = it
+                    settingsStorage.tidalUserId = it
+                }
         } catch (e: Exception) {
             println("DEBUG TIDAL ERROR PARSING SESSION: $sessionsBody")
             throw Exception("Error al procesar la sesión de Tidal: ${e.message}")
@@ -59,35 +68,57 @@ class TidalApiClient(
     suspend fun getPlaylists(): List<Playlist> {
         return try {
             val token = tokenRefreshPlugin.getValidToken("tidal")
-            val userId = getUserId()
-            val response = client.get("https://listen.tidal.com/v1/users/$userId/playlists") {
-                header(HttpHeaders.Authorization, "Bearer $token")
-                parameter("countryCode", "US")
-                parameter("limit", 999)
-                parameter("offset", 0)
-            }
-            val body = response.bodyAsText()
-            println("DEBUG TIDAL PLAYLISTS: status=${response.status} body=${body.take(500)}")
+            val playlists = mutableListOf<Playlist>()
+            var cursor: String? = null
 
-            if (!response.status.isSuccess()) {
-                println("DEBUG: Tidal getPlaylists failed: ${response.status} - ${body.take(300)}")
-                return emptyList()
-            }
+            while (true) {
+                val response = client.get("https://openapi.tidal.com/v2/playlists") {
+                    header(HttpHeaders.Authorization, "Bearer $token")
+                    header(HttpHeaders.Accept, "application/vnd.api+json")
+                    parameter("filter[owners.id]", "me")
+                    parameter("countryCode", "AR")
+                    if (cursor != null) {
+                        parameter("page[cursor]", cursor)
+                    }
+                }
+                val body = response.bodyAsText()
+                println("DEBUG TIDAL GET PLAYLISTS: status=${response.status} body=${body.take(500)}")
 
-            val items = json.parseToJsonElement(body)
-                .jsonObject["items"]?.jsonArray ?: return emptyList()
+                if (!response.status.isSuccess()) {
+                    println("DEBUG: Tidal getPlaylists failed: ${response.status} - ${body.take(300)}")
+                    break
+                }
 
-            items.map { item ->
-                val obj = item.jsonObject
-                Playlist(
-                    id = obj["uuid"]?.jsonPrimitive?.content ?: "",
-                    name = obj["title"]?.jsonPrimitive?.content ?: "",
-                    trackCount = obj["numberOfTracks"]?.jsonPrimitive?.intOrNull ?: 0,
-                    description = obj["description"]?.jsonPrimitive?.contentOrNull,
-                    imageUrl = null,
-                    source = MusicService.TIDAL,
-                )
+                val bodyObj = json.parseToJsonElement(body).jsonObject
+                val data = bodyObj["data"]?.jsonArray ?: break
+
+                data.mapNotNull { item ->
+                    val obj = item.jsonObject
+                    val id = obj["id"]?.jsonPrimitive?.content ?: return@mapNotNull null
+                    val attributes = obj["attributes"]?.jsonObject ?: return@mapNotNull null
+                    val name = attributes["name"]?.jsonPrimitive?.content ?: ""
+                    val trackCount = attributes["numberOfItems"]?.jsonPrimitive?.intOrNull ?: 0
+                    val description = attributes["description"]?.jsonPrimitive?.contentOrNull
+                    Playlist(
+                        id = id,
+                        name = name,
+                        trackCount = trackCount,
+                        description = description,
+                        imageUrl = null,
+                        source = MusicService.TIDAL,
+                    )
+                }.forEach { playlists.add(it) }
+
+                val links = bodyObj["links"]?.jsonObject
+                val next = links?.get("next")?.jsonPrimitive?.contentOrNull
+                val nextCursor = links?.get("meta")?.jsonObject?.get("nextCursor")?.jsonPrimitive?.contentOrNull
+
+                cursor = nextCursor ?: next?.substringAfter("page[cursor]=", "")?.substringBefore("&")?.takeIf { it.isNotEmpty() }
+                if (cursor.isNullOrBlank() || data.isEmpty()) {
+                    break
+                }
             }
+            playlists
         } catch (e: Exception) {
             println("DEBUG: Tidal getPlaylists exception: ${e.message}")
             e.printStackTrace()
@@ -99,29 +130,38 @@ class TidalApiClient(
         return try {
             val token = tokenRefreshPlugin.getValidToken("tidal")
             val allIds = mutableSetOf<String>()
-            var offset = 0
-            val limit = 100
+            var cursor: String? = null
 
             while (true) {
-                val response = client.get("https://listen.tidal.com/v1/playlists/$playlistId/items") {
+                val response = client.get("https://openapi.tidal.com/v2/playlists/$playlistId/relationships/items") {
                     header(HttpHeaders.Authorization, "Bearer $token")
-                    parameter("countryCode", "US")
-                    parameter("limit", limit)
-                    parameter("offset", offset)
+                    header(HttpHeaders.Accept, "application/vnd.api+json")
+                    parameter("countryCode", "AR")
+                    if (cursor != null) {
+                        parameter("page[cursor]", cursor)
+                    }
                 }
                 if (response.status != HttpStatusCode.OK) break
 
-                val body = json.parseToJsonElement(response.bodyAsText()).jsonObject
-                val items = body["items"]?.jsonArray ?: break
+                val bodyText = response.bodyAsText()
+                val bodyObj = json.parseToJsonElement(bodyText).jsonObject
+                val data = bodyObj["data"]?.jsonArray ?: break
 
-                items.mapNotNull {
-                    it.jsonObject["item"]?.jsonObject?.get("id")?.jsonPrimitive?.content
-                        ?: it.jsonObject["id"]?.jsonPrimitive?.content
-                }.forEach { allIds.add(it) }
+                data.forEach { item ->
+                    val id = item.jsonObject["id"]?.jsonPrimitive?.content
+                    if (id != null) {
+                        allIds.add(id)
+                    }
+                }
 
-                val totalItems = body["totalNumberOfItems"]?.jsonPrimitive?.intOrNull ?: 0
-                offset += limit
-                if (offset >= totalItems || items.isEmpty()) break
+                val links = bodyObj["links"]?.jsonObject
+                val next = links?.get("next")?.jsonPrimitive?.contentOrNull
+                val nextCursor = links?.get("meta")?.jsonObject?.get("nextCursor")?.jsonPrimitive?.contentOrNull
+
+                cursor = nextCursor ?: next?.substringAfter("page[cursor]=", "")?.substringBefore("&")?.takeIf { it.isNotEmpty() }
+                if (cursor.isNullOrBlank() || data.isEmpty()) {
+                    break
+                }
             }
 
             println("DEBUG TIDAL PLAYLIST TRACKS: playlistId=$playlistId found=${allIds.size} track IDs")
@@ -139,7 +179,7 @@ class TidalApiClient(
                 header(HttpHeaders.Authorization, "Bearer $token")
                 parameter("query", query)
                 parameter("limit", limit)
-                parameter("countryCode", "US")
+                parameter("countryCode", "AR")
             }
             if (response.status != HttpStatusCode.OK) return emptyList()
 
@@ -164,7 +204,7 @@ class TidalApiClient(
                 header(HttpHeaders.Authorization, "Bearer $token")
                 parameter("query", isrc)
                 parameter("limit", 5)
-                parameter("countryCode", "US")
+                parameter("countryCode", "AR")
             }
             if (response.status != HttpStatusCode.OK) return null
 
@@ -186,30 +226,37 @@ class TidalApiClient(
      */
     suspend fun createPlaylist(name: String, description: String): String {
         val token = tokenRefreshPlugin.getValidToken("tidal")
-        val userId = getUserId()
-
-        val response = client.submitForm(
-            url = "https://listen.tidal.com/v1/users/$userId/playlists",
-            formParameters = parameters {
-                append("title", name)
-                append("description", description)
+        
+        try {
+            println("DEBUG TIDAL: Intentando crear playlist en v2...")
+            val response = client.post("https://openapi.tidal.com/v2/playlists") {
+                header(HttpHeaders.Authorization, "Bearer $token")
+                header(HttpHeaders.Accept, "application/vnd.api+json")
+                contentType(ContentType("application", "vnd.api+json"))
+                
+                setBody(buildJsonObject {
+                    putJsonObject("data") {
+                        put("type", "playlists")
+                        putJsonObject("attributes") {
+                            put("name", name)
+                            put("description", description)
+                        }
+                    }
+                })
             }
-        ) {
-            header(HttpHeaders.Authorization, "Bearer $token")
-            parameter("countryCode", "US")
+            
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                val jsonBody = json.parseToJsonElement(body).jsonObject
+                return jsonBody["data"]?.jsonObject?.get("id")?.jsonPrimitive?.content 
+                    ?: throw Exception("ID no encontrado en respuesta v2")
+            }
+            println("DEBUG TIDAL: creación v2 falló (${response.status}): $body")
+            throw Exception("Fallo al crear playlist v2: ${response.status} - $body")
+        } catch (e: Exception) {
+            println("DEBUG TIDAL: Error al crear playlist en v2: ${e.message}")
+            throw e
         }
-
-        val body = response.bodyAsText()
-        println("DEBUG TIDAL CREATE PLAYLIST: status=${response.status} body=${body.take(300)}")
-
-        if (!response.status.isSuccess()) {
-            throw Exception("Failed to create Tidal playlist: ${response.status} - ${body.take(200)}")
-        }
-
-        val jsonBody = json.parseToJsonElement(body).jsonObject
-        return jsonBody["uuid"]?.jsonPrimitive?.content
-            ?: jsonBody["id"]?.jsonPrimitive?.content
-            ?: throw Exception("No playlist ID in response: ${body.take(200)}")
     }
 
     /**
@@ -221,33 +268,29 @@ class TidalApiClient(
         if (tidalTrackIds.isEmpty()) return
         val token = tokenRefreshPlugin.getValidToken("tidal")
 
-        tidalTrackIds.chunked(25).forEach { batch ->
-            withRetry {
-                // Obtener ETag actual (cambia con cada modificación)
-                val etagResponse = client.get("https://listen.tidal.com/v1/playlists/$playlistId") {
-                    header(HttpHeaders.Authorization, "Bearer $token")
-                    parameter("countryCode", "US")
-                }
-                val etag = etagResponse.headers["ETag"] ?: ""
-
-                val response = client.submitForm(
-                    url = "https://listen.tidal.com/v1/playlists/$playlistId/items",
-                    formParameters = parameters {
-                        append("trackIds", batch.joinToString(","))
-                        append("toIndex", "0")
+        // CRITICAL: Tidal v2 relationships/items POST maxItems is 20
+        tidalTrackIds.chunked(20).forEach { batch ->
+            val response = client.post("https://openapi.tidal.com/v2/playlists/$playlistId/relationships/items") {
+                header(HttpHeaders.Authorization, "Bearer $token")
+                header(HttpHeaders.Accept, "application/vnd.api+json")
+                contentType(ContentType("application", "vnd.api+json"))
+                setBody(buildJsonObject {
+                    putJsonArray("data") {
+                        batch.forEach { id ->
+                            addJsonObject {
+                                put("id", id)
+                                put("type", "tracks")
+                            }
+                        }
                     }
-                ) {
-                    header(HttpHeaders.Authorization, "Bearer $token")
-                    header("If-None-Match", etag)
-                    parameter("countryCode", "US")
-                }
+                })
+            }
 
-                val body = response.bodyAsText()
-                println("DEBUG TIDAL ADD TRACKS: status=${response.status} batch=${batch.size} body=${body.take(200)}")
+            val body = response.bodyAsText()
+            println("DEBUG TIDAL ADD TRACKS v2: status=${response.status} batch=${batch.size} body=${body.take(200)}")
 
-                if (!response.status.isSuccess()) {
-                    throw Exception("Failed to add tracks to playlist: ${response.status} - ${body.take(200)}")
-                }
+            if (!response.status.isSuccess()) {
+                throw Exception("Failed to add tracks to playlist v2: ${response.status} - ${body.take(200)}")
             }
         }
     }
@@ -259,24 +302,24 @@ class TidalApiClient(
     suspend fun updatePlaylistDescription(playlistId: String, description: String) {
         val token = tokenRefreshPlugin.getValidToken("tidal")
 
-        // Obtener ETag actual
-        val etagResponse = client.get("https://listen.tidal.com/v1/playlists/$playlistId") {
+        val response = client.patch("https://openapi.tidal.com/v2/playlists/$playlistId") {
             header(HttpHeaders.Authorization, "Bearer $token")
-            parameter("countryCode", "US")
+            header(HttpHeaders.Accept, "application/vnd.api+json")
+            contentType(ContentType("application", "vnd.api+json"))
+            setBody(buildJsonObject {
+                putJsonObject("data") {
+                    put("type", "playlists")
+                    putJsonObject("attributes") {
+                        put("description", description)
+                    }
+                }
+            })
         }
-        val etag = etagResponse.headers["ETag"] ?: ""
 
-        val response = client.submitForm(
-            url = "https://listen.tidal.com/v1/playlists/$playlistId",
-            formParameters = parameters {
-                append("description", description)
-            }
-        ) {
-            header(HttpHeaders.Authorization, "Bearer $token")
-            header("If-None-Match", etag)
-            parameter("countryCode", "US")
+        if (!response.status.isSuccess()) {
+            val body = response.bodyAsText()
+            throw Exception("Failed to update playlist description v2: ${response.status} - ${body.take(200)}")
         }
-        println("DEBUG TIDAL UPDATE DESC: status=${response.status} body=${response.bodyAsText().take(200)}")
     }
 
     suspend fun searchAlbums(query: String, limit: Int = 3): List<com.conduit.domain.repository.TidalAlbum> {
@@ -286,7 +329,7 @@ class TidalApiClient(
                 header(HttpHeaders.Authorization, "Bearer $token")
                 parameter("query", query)
                 parameter("limit", limit)
-                parameter("countryCode", "US")
+                parameter("countryCode", "AR")
             }
             if (response.status != HttpStatusCode.OK) return emptyList()
 
@@ -312,7 +355,7 @@ class TidalApiClient(
             val token = tokenRefreshPlugin.getValidToken("tidal")
             val response = client.get("https://listen.tidal.com/v1/albums/$albumId/tracks") {
                 header(HttpHeaders.Authorization, "Bearer $token")
-                parameter("countryCode", "US")
+                parameter("countryCode", "AR")
             }
             if (response.status != HttpStatusCode.OK) return emptyList()
 
@@ -331,7 +374,7 @@ class TidalApiClient(
             val token = tokenRefreshPlugin.getValidToken("tidal")
             val response = client.get("https://listen.tidal.com/v1/tracks/$trackId") {
                 header(HttpHeaders.Authorization, "Bearer $token")
-                parameter("countryCode", "US")
+                parameter("countryCode", "AR")
             }
             if (response.status != HttpStatusCode.OK) return null
 
