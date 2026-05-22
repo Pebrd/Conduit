@@ -58,45 +58,58 @@ class SyncEngine(
         val normMainArtist = spotifyArtists.firstOrNull() ?: ""
 
         // ── Paso 2: Multi-estrategia de búsqueda por texto ────────────────────
-        // Cada estrategia genera candidatos; scoring unificado decide el ganador.
-        val allCandidates = mutableListOf<TidalTrack>()
+        val cleanedMainArtist = cleanArtistForSearch(normMainArtist)
+        val queryA = cleanSearchQuery("$normTitle $cleanedMainArtist")
+        val candidatesA = searchCached(queryA, 30)
 
-        // Estrategia A: titulo + artista principal
-        val queryA = "$normTitle $normMainArtist"
-        allCandidates += searchCached(queryA, 30)
-
-        // Estrategia B: solo título (captura casos donde artista es muy distinto)
-        if (allCandidates.isEmpty()) {
-            allCandidates += searchCached(normTitle, 30)
-        }
-
-        // Estrategia C: artista principal + título (orden invertido)
-        if (allCandidates.size < 5 && normMainArtist.isNotBlank()) {
-            allCandidates += searchCached("$normMainArtist $normTitle", 20)
-        }
-
-        // Estrategia D: título simplificado (palabras clave del título, max 4 tokens)
-        val simplifiedTitle = normTitle.split(" ").take(4).joinToString(" ")
-        if (allCandidates.size < 5 && simplifiedTitle != normTitle) {
-            allCandidates += searchCached("$simplifiedTitle $normMainArtist", 20)
-        }
-
-        // Estrategia E: si hay múltiples artistas, probar con el segundo artista
-        val secondArtist = spotifyArtists.drop(1).firstOrNull()
-        if (allCandidates.size < 5 && secondArtist != null) {
-            allCandidates += searchCached("$normTitle $secondArtist", 20)
-        }
-
-        // Deduplicar (mismo ID)
-        val uniqueCandidates = allCandidates.distinctBy { it.id }
-
-        // ── Paso 3: Scoring sobre todos los candidatos ─────────────────────────
-        val best = uniqueCandidates
+        val bestA = candidatesA
+            .distinctBy { it.id }
             .map { it to computeScore(track, it, spotifyArtists, normTitle, normAlbum) }
             .maxByOrNull { it.second }
 
-        if (best != null) {
-            val (tidalTrack, score) = best
+        val finalBest = if (bestA != null && bestA.second >= 0.50) {
+            bestA
+        } else {
+            val fallbackCandidates = mutableListOf<TidalTrack>()
+            if (bestA != null) {
+                fallbackCandidates.add(bestA.first)
+            }
+
+            // Estrategia B: solo título
+            fallbackCandidates += searchCached(cleanSearchQuery(normTitle), 30)
+
+            // Estrategia C: artista principal + título (orden invertido)
+            if (cleanedMainArtist.isNotBlank()) {
+                fallbackCandidates += searchCached(cleanSearchQuery("$cleanedMainArtist $normTitle"), 20)
+            }
+
+            // Estrategia D: título simplificado (palabras clave del título, max 4 tokens) + artista principal
+            val simplifiedTitle = normTitle.split(" ").take(4).joinToString(" ")
+            if (simplifiedTitle != normTitle) {
+                fallbackCandidates += searchCached(cleanSearchQuery("$simplifiedTitle $cleanedMainArtist"), 20)
+            }
+
+            // Estrategia E: primer token del artista principal (para evitar sufijos/mismatches)
+            val firstWordArtist = cleanedMainArtist.split(" ").firstOrNull() ?: ""
+            if (firstWordArtist.isNotBlank() && firstWordArtist != cleanedMainArtist) {
+                fallbackCandidates += searchCached(cleanSearchQuery("$normTitle $firstWordArtist"), 20)
+            }
+
+            // Estrategia F: si hay múltiples artistas, probar con el segundo artista
+            val secondArtist = spotifyArtists.drop(1).firstOrNull()
+            if (secondArtist != null) {
+                val cleanedSecond = cleanArtistForSearch(secondArtist)
+                fallbackCandidates += searchCached(cleanSearchQuery("$normTitle $cleanedSecond"), 20)
+            }
+
+            fallbackCandidates.distinctBy { it.id }
+                .map { it to computeScore(track, it, spotifyArtists, normTitle, normAlbum) }
+                .maxByOrNull { it.second }
+        }
+
+        // ── Paso 3: Scoring sobre todos los candidatos ─────────────────────────
+        if (finalBest != null) {
+            val (tidalTrack, score) = finalBest
             val isDuplicate = tidalTrack.id in existingTidalTrackIds
             when {
                 score >= 0.55 -> return if (isDuplicate) MatchResult.Duplicate(track, tidalTrack)
@@ -209,18 +222,28 @@ class SyncEngine(
         // Título: Levenshtein + bonus de tokens compartidos
         val lev         = levenshteinNorm(normSpotTitle, normTidalTitle)
         val tokenBonus  = tokenOverlapScore(normSpotTitle, normTidalTitle)
-        val titleScore  = (lev * 0.7 + tokenBonus * 0.3) * 0.40
+        val titleScore  = (lev * 0.7 + tokenBonus * 0.3) * 0.43
 
-        // Artista: Jaccard sobre sets + bonus de substring
+        // Artista: Jaccard sobre sets + bonus de substring + token-based similarity
         val jaccArtist  = jaccard(spotifyArtists, tidalArtists)
-        val subArtist   = if (spotifyArtists.any { tidalArtists.any { t -> t.contains(it) || it.contains(t) } }) 0.3 else 0.0
-        val artistScore = minOf(jaccArtist + subArtist * (1 - jaccArtist), 1.0) * 0.30
+        val spotTokens  = getArtistTokens(spotifyArtists)
+        val tidalTokens = getArtistTokens(tidalArtists)
+        val tokenJaccard = if (spotTokens.isEmpty() && tidalTokens.isEmpty()) 1.0
+                           else if (spotTokens.isEmpty() || tidalTokens.isEmpty()) 0.0
+                           else spotTokens.intersect(tidalTokens).size.toDouble() / spotTokens.union(tidalTokens).size.toDouble()
 
-        // Duración: más tolerante que antes
-        val durationScore = durationScore(spotify.durationMs, tidal.durationMs) * 0.18
+        val combinedArtistMatch = maxOf(jaccArtist, tokenJaccard)
+        val subArtist   = if (spotifyArtists.any { tidalArtists.any { t -> t.contains(it) || it.contains(t) } }) 0.3 else 0.0
+        val artistScore = minOf(combinedArtistMatch + subArtist * (1 - combinedArtistMatch), 1.0) * 0.30
+
+        // Duración: más tolerante si el match es muy fuerte (ambos título y artista >= 88% de coincidencia)
+        val titleSim = lev * 0.7 + tokenBonus * 0.3
+        val artistSim = combinedArtistMatch
+        val relaxed = titleSim >= 0.88 && artistSim >= 0.88
+        val durationScore = durationScore(spotify.durationMs, tidal.durationMs, relaxed) * 0.18
 
         // Álbum (menor peso — diferencias de edición son comunes)
-        val albumScore  = levenshteinNorm(normSpotAlbum, normalize(tidal.album)) * 0.07
+        val albumScore  = levenshteinNorm(normSpotAlbum, normalize(tidal.album)) * 0.04
 
         // Año
         val yearScore   = yearScore(spotify.releaseYear, tidal.releaseYear) * 0.04
@@ -240,6 +263,38 @@ class SyncEngine(
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    fun cleanSearchQuery(query: String): String {
+        val words = query.split(Regex("""\s+""")).filter { it.isNotBlank() }
+        if (words.size <= 5) return query
+        return words.take(5).joinToString(" ")
+    }
+
+    fun cleanArtistForSearch(artist: String): String {
+        return artist
+            .replace(Regex("""\s+(and|&)\s+the\s+band\b""", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("""\s+(and|&)\s+the\s+orchestra\b""", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("""\s+orchestra\b""", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("""\s+band\b""", RegexOption.IGNORE_CASE), "")
+            .trim()
+    }
+
+    fun getArtistTokens(artists: Set<String>): Set<String> {
+        val stopWords = setOf("the", "and", "y", "e", "with", "feat", "ft", "band", "orchestra", "de", "la", "los", "las", "of", "a")
+        return artists
+            .flatMap { it.lowercase().split(Regex("""\s+""")) }
+            .map { it.replace(Regex("[^a-z0-9]"), "") }
+            .filter { it.isNotBlank() && it !in stopWords }
+            .toSet()
+    }
+
+    fun standardizeVersionStrings(title: String): String {
+        return title.lowercase()
+            .replace(Regex("""\brmx\b"""), "remix")
+            .replace(Regex("""\bradio\s+edit\b"""), "edit")
+            .replace(Regex("""\boriginal\s+mix\b"""), "original")
+            .replace(Regex("""\bextended\s+mix\b"""), "extended")
+    }
 
     private suspend fun searchCached(query: String, limit: Int): List<TidalTrack> {
         val key = "$query|$limit"
@@ -371,9 +426,10 @@ class SyncEngine(
         return a.intersect(b).size.toDouble() / a.union(b).size.toDouble()
     }
 
-    fun durationScore(spotMs: Long, tidalMs: Long): Double {
+    fun durationScore(spotMs: Long, tidalMs: Long, relaxed: Boolean = false): Double {
         if (spotMs == 0L || tidalMs == 0L) return 0.5  // desconocido → neutral
-        val diffSec = abs(spotMs - tidalMs) / 1000.0
+        val diffSecRaw = abs(spotMs - tidalMs) / 1000.0
+        val diffSec = if (relaxed) diffSecRaw / 1.5 else diffSecRaw
         return when {
             diffSec <= 2  -> 1.00
             diffSec <= 5  -> 0.95
@@ -390,11 +446,11 @@ class SyncEngine(
         return when (abs(a - b)) { 0 -> 1.0; 1 -> 0.7; 2 -> 0.3; else -> 0.0 }
     }
 
-    val VERSION_TAGS = listOf("live", "acoustic", "remix", "radio edit", "extended", "instrumental", "demo", "reprise", "medley")
+    val VERSION_TAGS = listOf("live", "acoustic", "remix", "edit", "extended", "instrumental", "demo", "reprise", "medley", "original")
 
     fun versionMismatchPenalty(spotTitle: String, tidalTitle: String): Double {
-        val s = spotTitle.lowercase()
-        val t = tidalTitle.lowercase()
+        val s = standardizeVersionStrings(spotTitle)
+        val t = standardizeVersionStrings(tidalTitle)
         // Penalizar solo cuando una versión tiene el tag y la otra NO
         return (VERSION_TAGS.count { tag -> s.contains(tag) != t.contains(tag) } * 0.12).coerceAtMost(0.60)
     }
