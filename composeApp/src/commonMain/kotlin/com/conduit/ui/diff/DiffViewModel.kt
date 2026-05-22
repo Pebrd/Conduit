@@ -18,7 +18,8 @@ data class DiffUiState(
 
 class DiffViewModel(
     private val buildDiffUseCase: BuildDiffUseCase,
-    private val spotifyRepo: com.conduit.domain.repository.SpotifyRepository
+    private val spotifyRepo: com.conduit.domain.repository.SpotifyRepository,
+    private val tidalRepo: com.conduit.domain.repository.TidalRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(DiffUiState())
@@ -32,7 +33,15 @@ class DiffViewModel(
                 val playlists = spotifyRepo.getPlaylists()
                 val name = playlists.firstOrNull { it.id == playlistId }?.name ?: "Playlist"
                 
-                val diff = buildDiffUseCase(playlistId, null)
+                var mappedId = tidalRepo.getMappedPlaylist(playlistId)
+                if (mappedId != null) {
+                    if (!tidalRepo.playlistExists(mappedId)) {
+                        tidalRepo.removeMappedPlaylist(playlistId)
+                        mappedId = null
+                    }
+                }
+                
+                val diff = buildDiffUseCase(playlistId, mappedId)
                 _uiState.update { it.copy(diffEntries = diff, playlistName = name) }
             } catch (e: Exception) {
                 _uiState.update { it.copy(error = e.message) }

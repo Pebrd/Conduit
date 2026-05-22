@@ -31,5 +31,6 @@ class SettingsStorage(private val settings: Settings) {
 
     fun getMappedTidalPlaylist(spotifyId: String): String? = settings.getStringOrNull("mapped_playlist_$spotifyId")
     fun saveMappedTidalPlaylist(spotifyId: String, tidalId: String) = settings.putString("mapped_playlist_$spotifyId", tidalId)
+    fun removeMappedTidalPlaylist(spotifyId: String) = settings.remove("mapped_playlist_$spotifyId")
 }
  

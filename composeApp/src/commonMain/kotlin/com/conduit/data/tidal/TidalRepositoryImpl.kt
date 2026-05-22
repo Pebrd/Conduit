@@ -14,6 +14,7 @@ class TidalRepositoryImpl(
     override suspend fun getPlaylists(): List<Playlist> = apiClient.getPlaylists()
     
     override suspend fun getPlaylistTrackIds(playlistId: String): Set<String> = apiClient.getPlaylistTrackIds(playlistId)
+    override suspend fun getPlaylistExistingTracks(playlistId: String): Pair<Set<String>, Set<String>> = apiClient.getPlaylistExistingTracks(playlistId)
 
     override suspend fun createPlaylist(name: String, description: String): String {
         return apiClient.createPlaylist(name, description)
@@ -27,10 +28,14 @@ class TidalRepositoryImpl(
         name: String,
         spotifyPlaylistId: String,
     ): String {
-        // Paso 0: buscar en el almacenamiento local
+        // Paso 0: buscar en el almacenamiento local y verificar que exista
         val localMappedId = settings.getMappedTidalPlaylist(spotifyPlaylistId)
         if (localMappedId != null) {
-            return localMappedId
+            if (apiClient.playlistExists(localMappedId)) {
+                return localMappedId
+            } else {
+                settings.removeMappedTidalPlaylist(spotifyPlaylistId)
+            }
         }
 
         val allPlaylists = apiClient.getPlaylists()
@@ -83,4 +88,14 @@ class TidalRepositoryImpl(
 
     override suspend fun getTrack(id: String): TidalTrack? =
         apiClient.getTrack(id)
+
+    override fun getMappedPlaylist(spotifyPlaylistId: String): String? =
+        settings.getMappedTidalPlaylist(spotifyPlaylistId)
+
+    override fun removeMappedPlaylist(spotifyPlaylistId: String) {
+        settings.removeMappedTidalPlaylist(spotifyPlaylistId)
+    }
+
+    override suspend fun playlistExists(playlistId: String): Boolean =
+        apiClient.playlistExists(playlistId)
 }

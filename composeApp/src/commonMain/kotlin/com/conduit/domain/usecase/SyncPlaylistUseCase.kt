@@ -35,8 +35,8 @@ class SyncPlaylistUseCase(
             spotifyPlaylistId = spotifyPlaylistId,
         )
 
-        // 3. Obtener tracks ya existentes en la playlist de Tidal
-        val existingTidalIds = tidalRepo.getPlaylistTrackIds(tidalPlaylistId)
+        // 3. Obtener tracks ya existentes en la playlist de Tidal (IDs + ISRCs para dedup completo)
+        val (existingTidalIds, existingTidalIsrcs) = tidalRepo.getPlaylistExistingTracks(tidalPlaylistId)
 
         println("DEBUG SYNC: playlist=$spotifyPlaylistName tracks=${spotifyTracks.size} tidalId=$tidalPlaylistId")
 
@@ -63,7 +63,7 @@ class SyncPlaylistUseCase(
                 when (result) {
                     is MatchResult.Found -> matched.add(
                         MatchedTrack(
-                            spotify = result.track.toSpotify(), // Placeholder conversion if needed, or update MatchedTrack
+                            spotify = result.spotifyTrack,
                             tidal = result.track,
                             method = result.method,
                             score = result.score
@@ -71,12 +71,12 @@ class SyncPlaylistUseCase(
                     )
                     is MatchResult.LowConfidence -> lowConf.add(
                         LowConfidenceMatch(
-                            spotify = result.track.toSpotify(),
+                            spotify = result.spotifyTrack,
                             tidal = result.track,
                             score = result.score
                         )
                     )
-                    is MatchResult.Duplicate    -> duplicates.add(result.track.toSpotify())
+                    is MatchResult.Duplicate    -> duplicates.add(result.spotifyTrack)
                     is MatchResult.NotFound     -> notFound.add(result.spotifyTrack)
                     is MatchResult.Blacklisted  -> blacklisted.add(result.spotifyTrack)
                 }
@@ -93,12 +93,30 @@ class SyncPlaylistUseCase(
         }
 
         // 5. Agregar los tracks encontrados a la playlist de Tidal (en batch)
-        val tidalIdsToAdd = matched.map { it.tidal.id }
+        // Deduplicar por ID Y por ISRC para evitar versiones duplicadas del mismo tema
+        val tidalIdsToAdd = matched
+            .filterNot { it.tidal.id in existingTidalIds }
+            .filterNot { isrc -> isrc.tidal.isrc != null && isrc.tidal.isrc in existingTidalIsrcs }
+            .map { it.tidal.id }
         if (tidalIdsToAdd.isNotEmpty()) {
             tidalRepo.addTracksToPlaylist(tidalPlaylistId, tidalIdsToAdd)
         }
 
         val endTime = Clock.System.now().toEpochMilliseconds()
+        val duration = endTime - startTime
+
+        val syncResult = SyncResult(
+            id = spotifyPlaylistId,
+            playlistId = tidalPlaylistId,
+            playlistName = spotifyPlaylistName,
+            matched = matched,
+            notFound = notFound,
+            lowConfidence = lowConf,
+            duplicates = duplicates,
+            blacklisted = blacklisted,
+            durationMs = duration,
+            timestamp = Clock.System.now().toEpochMilliseconds()
+        )
 
         // 6. Emitir resultado final
         emit(SyncProgress.Completed(
@@ -110,7 +128,8 @@ class SyncPlaylistUseCase(
             blacklisted   = blacklisted.size,
             notFoundTracks= notFound,
             lowConfTracks = lowConf,
-            durationMs    = endTime - startTime,
+            durationMs    = duration,
+            result        = syncResult
         ))
 
     }.flowOn(Dispatchers.IO)

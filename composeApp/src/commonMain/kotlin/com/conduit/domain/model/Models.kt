@@ -23,6 +23,7 @@ data class TidalTrack(
     val durationMs: Long,
     val isrc: String? = null,
     val releaseYear: Int? = null,
+    val audioQuality: String? = null, // HI_RES_LOSSLESS, LOSSLESS, HIGH, etc.
 )
 
 @Serializable

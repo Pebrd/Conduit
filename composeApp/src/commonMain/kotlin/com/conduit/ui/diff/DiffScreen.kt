@@ -4,6 +4,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Cancel
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.HelpOutline
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -15,9 +21,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.conduit.domain.model.DiffEntry
 import com.conduit.domain.model.DiffStatus
-import com.conduit.ui.theme.AmoledBlack
-import com.conduit.ui.theme.OnSurfaceDim
-import com.conduit.ui.theme.SurfaceVariant
+import com.conduit.ui.theme.*
 import org.koin.compose.viewmodel.koinViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -86,15 +90,20 @@ fun DiffRow(entry: DiffEntry) {
             Text(entry.track.name, color = Color.White)
             Text(entry.track.artist, color = OnSurfaceDim, style = MaterialTheme.typography.bodySmall)
         }
-        
-        val statusIcon = when (entry.status) {
-            DiffStatus.OK -> "✅"
-            DiffStatus.NEW -> "➕"
-            DiffStatus.CONFLICT -> "⚠️"
-            DiffStatus.REMOVED -> "❌"
-            DiffStatus.MISSING -> "❓"
+
+        val (statusIcon, statusColor) = when (entry.status) {
+            DiffStatus.OK -> Icons.Filled.CheckCircle to SuccessGreen
+            DiffStatus.NEW -> Icons.Filled.Add to SuccessGreen
+            DiffStatus.CONFLICT -> Icons.Filled.Warning to WarningYellow
+            DiffStatus.REMOVED -> Icons.Filled.Cancel to ErrorRed
+            DiffStatus.MISSING -> Icons.Filled.HelpOutline to Color.Gray
         }
-        
-        Text(statusIcon)
+
+        Icon(
+            imageVector = statusIcon,
+            contentDescription = entry.status.name,
+            tint = statusColor,
+            modifier = Modifier.size(20.dp)
+        )
     }
 }

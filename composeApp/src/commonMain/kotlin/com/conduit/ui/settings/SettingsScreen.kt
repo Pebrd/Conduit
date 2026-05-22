@@ -16,6 +16,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.Alignment
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.OpenInNew
 import com.conduit.ui.theme.*
 import org.koin.compose.viewmodel.koinViewModel
@@ -145,7 +146,13 @@ fun SettingsScreen(
                     border = if (!state.isSpotifyConnected) BorderStroke(1.dp, MaterialTheme.colorScheme.primary) else null,
                     shape = MaterialTheme.shapes.extraSmall
                 ) {
-                    Text(if (state.isSpotifyConnected) "✓ CONNECTED" else "CONNECT SPOTIFY")
+                    if (state.isSpotifyConnected) {
+                        Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("CONNECTED")
+                    } else {
+                        Text("CONNECT SPOTIFY")
+                    }
                 }
             }
 
@@ -226,7 +233,13 @@ fun SettingsScreen(
                     border = if (!state.isTidalConnected) BorderStroke(1.dp, MaterialTheme.colorScheme.secondary) else null,
                     shape = MaterialTheme.shapes.extraSmall
                 ) {
-                    Text(if (state.isTidalConnected) "✓ CONNECTED" else "CONNECT TIDAL")
+                    if (state.isTidalConnected) {
+                        Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("CONNECTED")
+                    } else {
+                        Text("CONNECT TIDAL")
+                    }
                 }
             }
 
