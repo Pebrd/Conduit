@@ -267,6 +267,23 @@ class SpotifyApiClient(
             ?.let { parseSpotifyTrackItem(it.jsonObject) }
     }
 
+    suspend fun searchTracksByQuery(query: String, limit: Int = 20): List<Track> {
+        val token = tokenRefreshPlugin.getValidToken("spotify")
+        val response = client.get("https://api.spotify.com/v1/search") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+            parameter("q", query)
+            parameter("type", "track")
+            parameter("limit", limit)
+        }
+        if (response.status != HttpStatusCode.OK) return emptyList()
+        val json = Json { ignoreUnknownKeys = true }
+        return json.parseToJsonElement(response.bodyAsText())
+            .jsonObject["tracks"]?.jsonObject
+            ?.get("items")?.jsonArray
+            ?.mapNotNull { parseSpotifyTrackItem(it.jsonObject) }
+            ?: emptyList()
+    }
+
     suspend fun searchByIsrc(isrc: String): Track? {
         val token = tokenRefreshPlugin.getValidToken("spotify")
         val response = client.get("https://api.spotify.com/v1/search") {

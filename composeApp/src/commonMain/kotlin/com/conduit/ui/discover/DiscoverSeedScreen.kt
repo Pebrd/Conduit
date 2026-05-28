@@ -25,6 +25,7 @@ import com.conduit.domain.model.Track
 import com.conduit.ui.theme.AmoledBlack
 import com.conduit.ui.theme.OnSurfaceDim
 import com.conduit.ui.theme.SurfaceVariant
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -34,6 +35,7 @@ fun DiscoverSeedScreen(
     error: String?,
     onPlaylistSelected: (Playlist) -> Unit,
     onTrackSelected: (Track) -> Unit,
+    onSearch: suspend (String) -> List<Track> = { emptyList() },
     onBack: () -> Unit,
 ) {
     var step by remember { mutableStateOf<SeedStep>(SeedStep.CHOOSE_MODE) }
@@ -79,6 +81,7 @@ fun DiscoverSeedScreen(
                     )
                     SeedStep.SEARCH_TRACK -> TrackSearchScreen(
                         onTrackSelected = onTrackSelected,
+                        onSearch = onSearch,
                     )
                 }
             }
@@ -172,31 +175,88 @@ private fun PlaylistPickerScreen(
 @Composable
 private fun TrackSearchScreen(
     onTrackSelected: (Track) -> Unit,
+    onSearch: suspend (String) -> List<Track>,
 ) {
     var query by remember { mutableStateOf("") }
     var results by remember { mutableStateOf<List<Track>>(emptyList()) }
     var isSearching by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        OutlinedTextField(
-            value = query,
-            onValueChange = { query = it },
-            modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("Buscar canción...", color = Color.Gray) },
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White,
-                focusedBorderColor = Color.White,
-                unfocusedBorderColor = Color.Gray,
-            ),
-            singleLine = true,
-            trailingIcon = {
-                IconButton(onClick = { /* search logic */ }) {
-                    Icon(Icons.Default.Search, tint = Color.White, contentDescription = "Search")
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        item {
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("Buscar canción...", color = Color.Gray) },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White,
+                    focusedBorderColor = Color.White,
+                    unfocusedBorderColor = Color.Gray,
+                ),
+                singleLine = true,
+                trailingIcon = {
+                    if (isSearching) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            color = Color.White,
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        IconButton(onClick = {
+                            if (query.isNotBlank()) {
+                                scope.launch {
+                                    isSearching = true
+                                    results = onSearch(query)
+                                    isSearching = false
+                                }
+                            }
+                        }) {
+                            Icon(Icons.Default.Search, tint = Color.White, contentDescription = "Search")
+                        }
+                    }
+                }
+            )
+        }
+
+        if (results.isNotEmpty()) {
+            item {
+                Spacer(Modifier.height(8.dp))
+                Text("Resultados:", color = Color.Gray, fontSize = 12.sp)
+            }
+            items(results) { track ->
+                Card(
+                    modifier = Modifier.fillMaxWidth().clickable { onTrackSelected(track) },
+                    colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        AsyncImage(
+                            model = track.imageUrl,
+                            contentDescription = null,
+                            modifier = Modifier.size(56.dp).background(Color.DarkGray),
+                            contentScale = ContentScale.Crop
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(track.name, color = Color.White, maxLines = 1, fontWeight = FontWeight.SemiBold)
+                            Text(track.artist, color = Color.Gray, maxLines = 1, fontSize = 13.sp)
+                        }
+                        Icon(Icons.Default.MusicNote, tint = Color(0xFF1DB954), contentDescription = null)
+                    }
                 }
             }
-        )
-        Spacer(Modifier.height(16.dp))
-        Text("Seleccioná una canción de tus playlists o liked songs", color = Color.Gray)
+        } else if (!isSearching && query.isNotEmpty()) {
+            item {
+                Spacer(Modifier.height(16.dp))
+                Text("Sin resultados. Probá con otra búsqueda.", color = Color.Gray)
+            }
+        }
     }
 }

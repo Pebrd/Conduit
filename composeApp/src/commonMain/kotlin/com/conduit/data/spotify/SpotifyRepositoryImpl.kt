@@ -29,6 +29,8 @@ class SpotifyRepositoryImpl(
     // Discover
     override suspend fun searchTrack(name: String, artist: String): Track? =
         apiClient.searchTrack(name, artist)
+    override suspend fun searchTracksByQuery(query: String, limit: Int): List<Track> =
+        apiClient.searchTracksByQuery(query, limit)
     override suspend fun searchByIsrc(isrc: String): Track? =
         apiClient.searchByIsrc(isrc)
     override suspend fun createPlaylist(name: String): String =

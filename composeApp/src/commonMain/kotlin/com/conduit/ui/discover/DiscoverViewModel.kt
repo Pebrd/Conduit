@@ -100,6 +100,10 @@ class DiscoverViewModel(
         }
     }
 
+    suspend fun searchSpotifyTracks(query: String): List<Track> {
+        return spotifyRepo.searchTracksByQuery(query)
+    }
+
     fun setPlatform(platform: MusicService) {
         _state.update { current ->
             current.copy(

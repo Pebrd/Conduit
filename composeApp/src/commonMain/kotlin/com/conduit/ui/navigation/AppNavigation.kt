@@ -265,6 +265,7 @@ fun AppNavHost(navController: androidx.navigation.NavHostController) {
                     error = state.error,
                     onPlaylistSelected = { discoverViewModel.selectSeedPlaylist(it) },
                     onTrackSelected = { discoverViewModel.selectSeedTrack(it) },
+                    onSearch = { discoverViewModel.searchSpotifyTracks(it) },
                     onBack = { navController.popBackStack() },
                 )
                 DiscoverStep.DESTINATION -> state.session?.let { session ->

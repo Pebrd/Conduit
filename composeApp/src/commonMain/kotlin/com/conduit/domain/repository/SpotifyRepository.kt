@@ -19,6 +19,7 @@ interface SpotifyRepository {
 
     // Discover
     suspend fun searchTrack(name: String, artist: String): Track?
+    suspend fun searchTracksByQuery(query: String, limit: Int = 20): List<Track>
     suspend fun searchByIsrc(isrc: String): Track?
     suspend fun createPlaylist(name: String): String
     suspend fun addTrackToPlaylist(playlistId: String, trackId: String)
