@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -61,17 +60,6 @@ fun HomeScreen(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                item {
-                    Button(
-                        onClick = onDiscoverClick,
-                        modifier = Modifier.fillMaxWidth().height(56.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFBB86FC)),
-                    ) {
-                        Icon(Icons.Default.Explore, contentDescription = null, tint = Color.Black)
-                        Spacer(Modifier.width(8.dp))
-                        Text("DESCUBRIR", color = Color.Black, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
-                    }
-                }
                 items(state.playlists) { playlist ->
                     PlaylistRow(
                         playlist = playlist,

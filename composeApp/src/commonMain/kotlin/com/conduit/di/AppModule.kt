@@ -23,6 +23,7 @@ import com.conduit.domain.repository.*
 import com.conduit.domain.usecase.*
 import com.conduit.data.musicbrainz.*
 import com.conduit.data.itunes.*
+import com.conduit.platform.*
 
 import io.ktor.client.request.*
 import io.ktor.http.*
@@ -63,6 +64,7 @@ val appModule = module {
     // Discover clients
     single { MusicBrainzClient(get()) }
     single { ITunesClient(get()) }
+    single { AudioPreviewPlayer() }
 
     // Discover use cases
     factoryOf(::BuildMoodProfileUseCase)
