@@ -17,8 +17,12 @@ import com.conduit.ui.home.*
 import com.conduit.ui.sync.*
 import com.conduit.ui.diff.*
 import com.conduit.ui.auth.*
+import com.conduit.ui.stats.*
+import com.conduit.ui.discover.*
 import com.conduit.domain.repository.*
 import com.conduit.domain.usecase.*
+import com.conduit.data.musicbrainz.*
+import com.conduit.data.itunes.*
 
 import io.ktor.client.request.*
 import io.ktor.http.*
@@ -56,6 +60,15 @@ val appModule = module {
     single<SpotifyRepository> { SpotifyRepositoryImpl(get()) }
     single<TidalRepository> { TidalRepositoryImpl(get(), get()) }
     
+    // Discover clients
+    single { MusicBrainzClient(get()) }
+    single { ITunesClient(get()) }
+
+    // Discover use cases
+    factoryOf(::BuildMoodProfileUseCase)
+    factoryOf(::FindCandidatesUseCase)
+    factoryOf(::HandleLikeUseCase)
+    
     single { SyncEngine(get(), get(), get()) }
     
     // Use Cases
@@ -63,6 +76,13 @@ val appModule = module {
     factoryOf(::BuildDiffUseCase)
     factoryOf(::SyncPlaylistUseCase)
     factoryOf(::SyncAllPlaylistsUseCase)
+    factoryOf(::GetUserProfileUseCase)
+    factoryOf(::GetTopArtistsUseCase)
+    factoryOf(::GetTopTracksUseCase)
+    factoryOf(::GetRecentlyPlayedUseCase)
+    factoryOf(::GetMoodAnalysisUseCase)
+    factoryOf(::GetArtistTopTracksUseCase)
+    factoryOf(::GetTrackAudioFeaturesUseCase)
 
     // ViewModels
     viewModelOf(::SettingsViewModel)
@@ -70,4 +90,6 @@ val appModule = module {
     viewModelOf(::SyncViewModel)
     viewModelOf(::DiffViewModel)
     viewModelOf(::AuthViewModel)
+    viewModelOf(::StatsViewModel)
+    viewModelOf(::DiscoverViewModel)
 }

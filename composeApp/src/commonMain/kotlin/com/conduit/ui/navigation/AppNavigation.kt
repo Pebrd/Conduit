@@ -20,6 +20,20 @@ import com.conduit.ui.settings.SettingsScreen
 import com.conduit.ui.diff.DiffScreen
 import com.conduit.ui.sync.SyncScreen
 import com.conduit.ui.auth.AuthScreen
+import com.conduit.ui.stats.StatsDashboardScreen
+import com.conduit.ui.stats.TopArtistsScreen
+import com.conduit.ui.stats.TopTracksScreen
+import com.conduit.ui.stats.RecentlyPlayedScreen
+import com.conduit.ui.stats.TrackDetailScreen
+import com.conduit.ui.stats.ArtistDetailScreen
+import com.conduit.ui.stats.StatsViewModel
+import com.conduit.ui.discover.DiscoverSeedScreen
+import com.conduit.ui.discover.DiscoverPlatformScreen
+import com.conduit.ui.discover.DiscoverScreen
+import com.conduit.ui.discover.DiscoverViewModel
+import com.conduit.ui.discover.DiscoverStep
+import org.koin.compose.viewmodel.koinViewModel
+import androidx.navigation.NavBackStackEntry
 
 sealed class Screen(val route: String, val title: String, val icon: ImageVector) {
     object Auth     : Screen("auth", "Auth", Icons.Default.Lock)
@@ -27,14 +41,23 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector)
     object Blacklist : Screen("blacklist", "Blacklist", Icons.Default.Block)
     object History   : Screen("history", "History", Icons.Default.History)
     object Settings  : Screen("settings", "Settings", Icons.Default.Settings)
+    object Stats     : Screen("stats", "Stats", Icons.Default.BarChart)
+    object Discover  : Screen("discover", "Discover", Icons.Default.Explore)
     
     // Non-nav-bar screens
     object Diff      : Screen("diff/{playlistId}", "Review", Icons.Default.Preview)
     object Sync      : Screen("sync/{playlistId}/{playlistName}", "Sync", Icons.Default.Sync)
     object Resolve   : Screen("resolve/{syncResultId}", "Resolve", Icons.Default.Check)
+    
+    // Stats sub-screens
+    object TopArtists      : Screen("stats/top-artists", "Top Artists", Icons.Default.Person)
+    object TopTracks       : Screen("stats/top-tracks", "Top Tracks", Icons.Default.MusicNote)
+    object RecentlyPlayed  : Screen("stats/recently-played", "Recently Played", Icons.Default.History)
+    object TrackDetail     : Screen("stats/track/{trackId}", "Track", Icons.Default.MusicNote)
+    object ArtistDetail    : Screen("stats/artist/{artistId}", "Artist", Icons.Default.Person)
 }
 
-val NavItems = listOf(Screen.Home, Screen.Blacklist, Screen.History, Screen.Settings)
+val NavItems = listOf(Screen.Home, Screen.Discover, Screen.Stats, Screen.Blacklist, Screen.History, Screen.Settings)
 
 @Composable
 fun AppNavigation() {
@@ -123,6 +146,11 @@ fun AppNavigation() {
     }
 }
 
+/** Returns the parent Stats NavBackStackEntry so all stats screens share one ViewModel. */
+private fun parentStatsEntry(navController: androidx.navigation.NavHostController): NavBackStackEntry {
+    return navController.getBackStackEntry(Screen.Stats.route)
+}
+
 @Composable
 fun AppNavHost(navController: androidx.navigation.NavHostController) {
     NavHost(
@@ -141,7 +169,8 @@ fun AppNavHost(navController: androidx.navigation.NavHostController) {
         composable(Screen.Home.route) {
             HomeScreen(
                 onSettingsClick = { navController.navigate(Screen.Settings.route) },
-                onPlaylistClick = { id -> navController.navigate("diff/$id") }
+                onPlaylistClick = { id -> navController.navigate("diff/$id") },
+                onDiscoverClick = { navController.navigate(Screen.Discover.route) },
             )
         }
         composable(Screen.Settings.route) {
@@ -172,6 +201,98 @@ fun AppNavHost(navController: androidx.navigation.NavHostController) {
                     }
                 }
             )
+        }
+        composable(Screen.Stats.route) { entry ->
+            // The stats entry is the parent ViewModelStoreOwner for all stats screens
+            StatsDashboardScreen(
+                onNavigateToTopArtists = { navController.navigate(Screen.TopArtists.route) },
+                onNavigateToTopTracks = { navController.navigate(Screen.TopTracks.route) },
+                onNavigateToRecentlyPlayed = { navController.navigate(Screen.RecentlyPlayed.route) },
+                onNavigateToArtistDetail = { id -> navController.navigate("stats/artist/$id") },
+                onNavigateToTrackDetail = { id -> navController.navigate("stats/track/$id") },
+            )
+        }
+        composable(Screen.TopArtists.route) {
+            val statsEntry = parentStatsEntry(navController)
+            TopArtistsScreen(
+                onBack = { navController.popBackStack() },
+                onArtistClick = { id -> navController.navigate("stats/artist/$id") },
+                viewModel = koinViewModel(viewModelStoreOwner = statsEntry),
+            )
+        }
+        composable(Screen.TopTracks.route) {
+            val statsEntry = parentStatsEntry(navController)
+            TopTracksScreen(
+                onBack = { navController.popBackStack() },
+                onTrackClick = { id -> navController.navigate("stats/track/$id") },
+                viewModel = koinViewModel(viewModelStoreOwner = statsEntry),
+            )
+        }
+        composable(Screen.RecentlyPlayed.route) {
+            val statsEntry = parentStatsEntry(navController)
+            RecentlyPlayedScreen(
+                onBack = { navController.popBackStack() },
+                onTrackClick = { id -> navController.navigate("stats/track/$id") },
+                viewModel = koinViewModel(viewModelStoreOwner = statsEntry),
+            )
+        }
+        composable(Screen.TrackDetail.route) { backStackEntry ->
+            val trackId = backStackEntry.arguments?.getString("trackId") ?: return@composable
+            val statsEntry = parentStatsEntry(navController)
+            TrackDetailScreen(
+                trackId = trackId,
+                onBack = { navController.popBackStack() },
+                viewModel = koinViewModel(viewModelStoreOwner = statsEntry),
+            )
+        }
+        composable(Screen.ArtistDetail.route) { backStackEntry ->
+            val artistId = backStackEntry.arguments?.getString("artistId") ?: return@composable
+            val statsEntry = parentStatsEntry(navController)
+            ArtistDetailScreen(
+                artistId = artistId,
+                onBack = { navController.popBackStack() },
+                viewModel = koinViewModel(viewModelStoreOwner = statsEntry),
+            )
+        }
+        composable(Screen.Discover.route) {
+            val discoverViewModel: DiscoverViewModel = koinViewModel()
+            val state by discoverViewModel.state.collectAsState()
+
+            when (state.step) {
+                DiscoverStep.SEED -> DiscoverSeedScreen(
+                    playlists = state.playlists,
+                    isBuilding = state.isBuilding,
+                    error = state.error,
+                    onPlaylistSelected = { discoverViewModel.selectSeedPlaylist(it) },
+                    onTrackSelected = { discoverViewModel.selectSeedTrack(it) },
+                    onBack = { navController.popBackStack() },
+                )
+                DiscoverStep.DESTINATION -> state.session?.let { session ->
+                    DiscoverPlatformScreen(
+                        destination = session.destination,
+                        spotifyPlaylists = state.playlists,
+                        tidalPlaylists = emptyList(),
+                        onPlatformChange = { discoverViewModel.setPlatform(it) },
+                        onDestinationChange = { id, name -> discoverViewModel.updateDestination(id, name) },
+                        onConfirm = { discoverViewModel.confirmDestination() },
+                        onBack = { discoverViewModel.reset() },
+                    )
+                }
+                DiscoverStep.SWIPE -> state.session?.let { session ->
+                    DiscoverScreen(
+                        queue = state.queue,
+                        isPlaying = state.isPlaying,
+                        sessionInfo = "basado en: ${session.destination.playlistName}",
+                        destinationInfo = "→ ${session.destination.playlistName} · ${session.destination.platform.name}",
+                        onLike = { discoverViewModel.like(it) },
+                        onSkip = { discoverViewModel.skip(it) },
+                        onTogglePreview = { discoverViewModel.togglePreview(it) },
+                        onDestinationClick = { /* show destination picker in future */ },
+                        onBack = { discoverViewModel.reset() },
+                        onFinish = { navController.popBackStack() },
+                    )
+                }
+            }
         }
         composable(Screen.Blacklist.route) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
