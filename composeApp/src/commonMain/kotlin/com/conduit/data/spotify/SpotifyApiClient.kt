@@ -1,8 +1,6 @@
 package com.conduit.data.spotify
 
-import com.conduit.domain.model.Playlist
-import com.conduit.domain.model.Track
-import com.conduit.domain.model.MusicService
+import com.conduit.domain.model.*
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.request.*
@@ -11,6 +9,9 @@ import io.ktor.http.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
 import com.conduit.data.http.TokenRefreshPlugin
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
 
 class SpotifyApiClient(
     private val client: HttpClient,
@@ -113,6 +114,233 @@ class SpotifyApiClient(
             addAll(page.items.mapNotNull { it.toTrackDto(json)?.toDomain() })
             nextUrl = page.next
         }
+    }
+
+    // ── Stats endpoints ──
+
+    suspend fun getProfile(): UserProfile {
+        val token = tokenRefreshPlugin.getValidToken("spotify")
+        val response = client.get("https://api.spotify.com/v1/me") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+        }
+        val body = response.bodyAsText()
+        return Json { ignoreUnknownKeys = true }
+            .decodeFromString<SpotifyProfileDto>(body)
+            .toDomain()
+    }
+
+    suspend fun getTopArtists(timeRange: String = "medium_term", limit: Int = 20): List<TopArtistItem> {
+        val token = tokenRefreshPlugin.getValidToken("spotify")
+        val response = client.get("https://api.spotify.com/v1/me/top/artists") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+            parameter("time_range", timeRange)
+            parameter("limit", limit)
+        }
+        if (response.status != HttpStatusCode.OK) return emptyList()
+        val body = response.bodyAsText()
+        return Json { ignoreUnknownKeys = true }
+            .decodeFromString<SpotifyTopArtistsResponse>(body)
+            .items.map { it.toDomain() }
+    }
+
+    suspend fun getTopTracks(timeRange: String = "medium_term", limit: Int = 20): List<TopTrackItem> {
+        val token = tokenRefreshPlugin.getValidToken("spotify")
+        val response = client.get("https://api.spotify.com/v1/me/top/tracks") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+            parameter("time_range", timeRange)
+            parameter("limit", limit)
+        }
+        if (response.status != HttpStatusCode.OK) return emptyList()
+        val body = response.bodyAsText()
+        return Json { ignoreUnknownKeys = true }
+            .decodeFromString<SpotifyTopTracksResponse>(body)
+            .items.map { it.toDomain() }
+    }
+
+    suspend fun getRecentlyPlayed(limit: Int = 20): List<RecentlyPlayedItem> {
+        val token = tokenRefreshPlugin.getValidToken("spotify")
+        val response = client.get("https://api.spotify.com/v1/me/player/recently-played") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+            parameter("limit", limit)
+        }
+        if (response.status != HttpStatusCode.OK) return emptyList()
+        val body = response.bodyAsText()
+        val json = Json { ignoreUnknownKeys = true }
+        val page = json.decodeFromString<SpotifyRecentlyPlayedResponse>(body)
+        return page.items.mapNotNull { item ->
+            val track = item.track ?: return@mapNotNull null
+            RecentlyPlayedItem(
+                trackId = track.id,
+                trackName = track.name,
+                artist = track.artists?.joinToString(", ") { it.name } ?: "Unknown",
+                album = track.album?.name ?: "Unknown",
+                imageUrl = track.album?.images?.firstOrNull()?.url,
+                durationMs = track.duration_ms,
+                playedAt = item.played_at ?: "",
+            )
+        }
+    }
+
+    suspend fun getArtistTopTracks(artistId: String, market: String = "US"): List<TopTrackItem> {
+        val token = tokenRefreshPlugin.getValidToken("spotify")
+        val response = client.get("https://api.spotify.com/v1/artists/$artistId/top-tracks") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+            parameter("market", market)
+        }
+        if (response.status != HttpStatusCode.OK) return emptyList()
+        val body = response.bodyAsText()
+        return Json { ignoreUnknownKeys = true }
+            .decodeFromString<SpotifyArtistTopTracksResponse>(body)
+            .tracks.map { it.toDomain() }
+    }
+
+    suspend fun getArtistDetail(artistId: String): TopArtistItem? {
+        val token = tokenRefreshPlugin.getValidToken("spotify")
+        val response = client.get("https://api.spotify.com/v1/artists/$artistId") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+        }
+        val body = response.bodyAsText()
+        println("DEBUG ARTIST DETAIL RAW: $body")
+        if (response.status != HttpStatusCode.OK) {
+            throw Exception("Artist detail API error ${response.status}: $body")
+        }
+        val dto = Json { ignoreUnknownKeys = true }
+            .decodeFromString<SpotifyTopArtistDto>(body)
+        println("DEBUG ARTIST DETAIL DTO: id=${dto.id} name=${dto.name} popularity=${dto.popularity} followers=${dto.followers?.total}")
+        return dto.toDomain()
+    }
+
+    suspend fun getTrack(trackId: String): TopTrackItem? {
+        val token = tokenRefreshPlugin.getValidToken("spotify")
+        val response = client.get("https://api.spotify.com/v1/tracks/$trackId") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+        }
+        val body = response.bodyAsText()
+        println("DEBUG TRACK DETAIL RAW: $body")
+        if (response.status != HttpStatusCode.OK) {
+            throw Exception("Track detail API error ${response.status}: $body")
+        }
+        val dto = Json { ignoreUnknownKeys = true }
+            .decodeFromString<SpotifyTopTrackDto>(body)
+        println("DEBUG TRACK DETAIL DTO: id=${dto.id} name=${dto.name} popularity=${dto.popularity}")
+        return dto.toDomain()
+    }
+
+    suspend fun getAudioFeatures(trackIds: List<String>): List<AudioFeaturesItem> {
+        if (trackIds.isEmpty()) return emptyList()
+        val token = tokenRefreshPlugin.getValidToken("spotify")
+        // Batch in groups of 20
+        val results = mutableListOf<AudioFeaturesItem>()
+        trackIds.chunked(20).forEach { chunk ->
+            val idsParam = chunk.joinToString(",")
+            val response = client.get("https://api.spotify.com/v1/audio-features") {
+                header(HttpHeaders.Authorization, "Bearer $token")
+                parameter("ids", idsParam)
+            }
+            if (response.status == HttpStatusCode.OK) {
+                val body = response.bodyAsText()
+                val batch = Json { ignoreUnknownKeys = true }
+                    .decodeFromString<SpotifyAudioFeaturesBatchDto>(body)
+                results.addAll(batch.audio_features.filterNotNull().map { it.toDomain() })
+            }
+        }
+        return results
+    }
+
+    // ── Discover endpoints ──
+
+    suspend fun searchTrack(name: String, artist: String): Track? {
+        val token = tokenRefreshPlugin.getValidToken("spotify")
+        val query = "track:${name.replace(" ", "+")}+artist:${artist.replace(" ", "+")}"
+        val response = client.get("https://api.spotify.com/v1/search") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+            parameter("q", query)
+            parameter("type", "track")
+            parameter("limit", 5)
+        }
+        if (response.status != HttpStatusCode.OK) return null
+        val json = Json { ignoreUnknownKeys = true }
+        return json.parseToJsonElement(response.bodyAsText())
+            .jsonObject["tracks"]?.jsonObject
+            ?.get("items")?.jsonArray
+            ?.firstOrNull()
+            ?.let { parseSpotifyTrackItem(it.jsonObject) }
+    }
+
+    suspend fun searchByIsrc(isrc: String): Track? {
+        val token = tokenRefreshPlugin.getValidToken("spotify")
+        val response = client.get("https://api.spotify.com/v1/search") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+            parameter("q", "isrc:$isrc")
+            parameter("type", "track")
+            parameter("limit", 1)
+        }
+        if (response.status != HttpStatusCode.OK) return null
+        val json = Json { ignoreUnknownKeys = true }
+        return json.parseToJsonElement(response.bodyAsText())
+            .jsonObject["tracks"]?.jsonObject
+            ?.get("items")?.jsonArray
+            ?.firstOrNull()
+            ?.let { parseSpotifyTrackItem(it.jsonObject) }
+    }
+
+    suspend fun createPlaylist(name: String): String {
+        val token = tokenRefreshPlugin.getValidToken("spotify")
+        val profileResponse = client.get("https://api.spotify.com/v1/me") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+        }
+        val userId = Json { ignoreUnknownKeys = true }
+            .parseToJsonElement(profileResponse.bodyAsText())
+            .jsonObject["id"]?.jsonPrimitive?.content ?: throw Exception("No user ID")
+        val response = client.post("https://api.spotify.com/v1/users/$userId/playlists") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+            contentType(ContentType.Application.Json)
+            setBody(buildJsonObject {
+                put("name", name)
+                put("description", "Creada por Conduit Discover")
+                put("public", false)
+            })
+        }
+        if (response.status != HttpStatusCode.Created) {
+            throw Exception("Failed to create Spotify playlist: ${response.status}")
+        }
+        return Json { ignoreUnknownKeys = true }
+            .parseToJsonElement(response.bodyAsText())
+            .jsonObject["id"]?.jsonPrimitive?.content
+            ?: throw Exception("No playlist ID in response")
+    }
+
+    suspend fun addTrackToPlaylist(playlistId: String, trackId: String) {
+        val token = tokenRefreshPlugin.getValidToken("spotify")
+        val response = client.post("https://api.spotify.com/v1/playlists/$playlistId/tracks") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+            contentType(ContentType.Application.Json)
+            setBody(buildJsonObject {
+                putJsonArray("uris") { add("spotify:track:$trackId") }
+            })
+        }
+        if (response.status != HttpStatusCode.OK) {
+            throw Exception("Failed to add track to Spotify playlist: ${response.status}")
+        }
+    }
+
+    private fun parseSpotifyTrackItem(obj: JsonObject): Track? {
+        val id = obj["id"]?.jsonPrimitive?.content ?: return null
+        val name = obj["name"]?.jsonPrimitive?.content ?: return null
+        val artistNames = obj["artists"]?.jsonArray
+            ?.mapNotNull { it.jsonObject["name"]?.jsonPrimitive?.content }
+            ?: return null
+        val album = obj["album"]?.jsonObject
+        return Track(
+            id = id,
+            name = name,
+            artist = artistNames.joinToString(", "),
+            album = album?.get("name")?.jsonPrimitive?.content ?: "",
+            durationMs = obj["duration_ms"]?.jsonPrimitive?.longOrNull ?: 0L,
+            isrc = obj["external_ids"]?.jsonObject?.get("isrc")?.jsonPrimitive?.contentOrNull,
+            imageUrl = album?.get("images")?.jsonArray
+                ?.firstOrNull()?.jsonObject?.get("url")?.jsonPrimitive?.content,
+        )
     }
 }
 
