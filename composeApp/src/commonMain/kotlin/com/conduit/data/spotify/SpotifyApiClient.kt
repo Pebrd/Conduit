@@ -275,13 +275,23 @@ class SpotifyApiClient(
             parameter("type", "track")
             parameter("limit", limit)
         }
-        if (response.status != HttpStatusCode.OK) return emptyList()
+        val bodyString = response.bodyAsText()
+        println("DEBUG SPOTIFY SEARCH: status=${response.status} q=$query body=${bodyString.take(500)}")
+        if (response.status != HttpStatusCode.OK) {
+            println("DEBUG SPOTIFY SEARCH ERROR: ${response.status} $bodyString")
+            return emptyList()
+        }
         val json = Json { ignoreUnknownKeys = true }
-        return json.parseToJsonElement(response.bodyAsText())
-            .jsonObject["tracks"]?.jsonObject
-            ?.get("items")?.jsonArray
-            ?.mapNotNull { parseSpotifyTrackItem(it.jsonObject) }
-            ?: emptyList()
+        return try {
+            json.decodeFromString<SpotifySearchResponse>(bodyString)
+                .tracks?.items
+                ?.filter { it.id != null }
+                ?.map { it.toDomain() }
+                ?: emptyList()
+        } catch (e: Exception) {
+            println("DEBUG SPOTIFY SEARCH PARSE ERROR: ${e.message}")
+            emptyList()
+        }
     }
 
     suspend fun searchByIsrc(isrc: String): Track? {
@@ -463,5 +473,15 @@ internal data class SpotifyAlbumDto(
 internal data class SpotifyLikedTracksResponse(
     val items: List<SpotifyTrackItemDto>,
     val next: String? = null
+)
+
+@Serializable
+internal data class SpotifySearchResponse(
+    val tracks: SpotifySearchTracks? = null
+)
+
+@Serializable
+internal data class SpotifySearchTracks(
+    val items: List<SpotifyTrackDto> = emptyList()
 )
 

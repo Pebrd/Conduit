@@ -5,6 +5,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.MusicNote
@@ -17,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
@@ -180,7 +183,24 @@ private fun TrackSearchScreen(
     var query by remember { mutableStateOf("") }
     var results by remember { mutableStateOf<List<Track>>(emptyList()) }
     var isSearching by remember { mutableStateOf(false) }
+    var searchError by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+
+    fun performSearch() {
+        if (query.isBlank()) return
+        searchError = null
+        scope.launch {
+            isSearching = true
+            try {
+                results = onSearch(query)
+            } catch (e: Exception) {
+                results = emptyList()
+                searchError = "Error de búsqueda: ${e.message}"
+            } finally {
+                isSearching = false
+            }
+        }
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(16.dp),
@@ -199,6 +219,8 @@ private fun TrackSearchScreen(
                     unfocusedBorderColor = Color.Gray,
                 ),
                 singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { performSearch() }),
                 trailingIcon = {
                     if (isSearching) {
                         CircularProgressIndicator(
@@ -207,20 +229,19 @@ private fun TrackSearchScreen(
                             strokeWidth = 2.dp
                         )
                     } else {
-                        IconButton(onClick = {
-                            if (query.isNotBlank()) {
-                                scope.launch {
-                                    isSearching = true
-                                    results = onSearch(query)
-                                    isSearching = false
-                                }
-                            }
-                        }) {
+                        IconButton(onClick = { performSearch() }) {
                             Icon(Icons.Default.Search, tint = Color.White, contentDescription = "Search")
                         }
                     }
                 }
             )
+        }
+
+        searchError?.let { error ->
+            item {
+                Spacer(Modifier.height(8.dp))
+                Text(error, color = Color(0xFFCF6679), fontSize = 13.sp)
+            }
         }
 
         if (results.isNotEmpty()) {
@@ -252,7 +273,7 @@ private fun TrackSearchScreen(
                     }
                 }
             }
-        } else if (!isSearching && query.isNotEmpty()) {
+        } else if (!isSearching && query.isNotEmpty() && searchError == null) {
             item {
                 Spacer(Modifier.height(16.dp))
                 Text("Sin resultados. Probá con otra búsqueda.", color = Color.Gray)

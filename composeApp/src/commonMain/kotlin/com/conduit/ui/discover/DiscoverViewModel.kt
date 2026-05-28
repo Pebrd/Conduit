@@ -64,7 +64,9 @@ class DiscoverViewModel(
                     ),
                     moodProfile = profile,
                 )
-                startSwiping(session)
+                _state.update {
+                    it.copy(session = session, isBuilding = false, step = DiscoverStep.DESTINATION)
+                }
             } catch (e: Exception) {
                 _state.update { it.copy(isBuilding = false, error = "Error al analizar playlist: ${e.message}") }
             }
