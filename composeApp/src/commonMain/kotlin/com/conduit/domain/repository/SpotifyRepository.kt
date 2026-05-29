@@ -23,4 +23,11 @@ interface SpotifyRepository {
     suspend fun searchByIsrc(isrc: String): Track?
     suspend fun createPlaylist(name: String): String
     suspend fun addTrackToPlaylist(playlistId: String, trackId: String)
+
+    // Discover — Related Artists + Top Tracks (Spotify /recommendations is bugged)
+    suspend fun getRecommendationsViaRelatedArtists(
+        seedTrackIds: List<String>,
+        alreadySeen: Set<String> = emptySet(),
+        limit: Int = 30,
+    ): List<Track>
 }

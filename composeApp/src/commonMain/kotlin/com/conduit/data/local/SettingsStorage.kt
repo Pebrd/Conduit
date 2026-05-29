@@ -26,6 +26,10 @@ class SettingsStorage(private val settings: Settings) {
         get() = settings.getString("tidal_user_id", "")
         set(value) = settings.putString("tidal_user_id", value)
 
+    var lastfmApiKey: String
+        get() = settings.getString("lastfm_api_key", "")
+        set(value) = settings.putString("lastfm_api_key", value)
+
     fun getScopesVersion(): Int = settings.getInt("scopes_version", 0)
     fun saveScopesVersion(version: Int) = settings.putInt("scopes_version", version)
 

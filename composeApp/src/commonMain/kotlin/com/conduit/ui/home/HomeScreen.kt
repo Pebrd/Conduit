@@ -18,9 +18,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.conduit.domain.model.Playlist
-import com.conduit.ui.theme.AmoledBlack
-import com.conduit.ui.theme.OnSurfaceDim
-import com.conduit.ui.theme.SurfaceVariant
+import com.conduit.ui.theme.*
 import org.koin.compose.viewmodel.koinViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -63,6 +61,8 @@ fun HomeScreen(
                 items(state.playlists) { playlist ->
                     PlaylistRow(
                         playlist = playlist,
+                        isSyncedToTidal = playlist.id in state.syncedPlaylistIds,
+                        needsSync = playlist.id in state.needsSyncPlaylistIds,
                         onClick = { onPlaylistClick(playlist.id) }
                     )
                 }
@@ -82,6 +82,8 @@ fun HomeScreen(
 @Composable
 fun PlaylistRow(
     playlist: Playlist,
+    isSyncedToTidal: Boolean = false,
+    needsSync: Boolean = false,
     onClick: () -> Unit
 ) {
     Card(
@@ -107,21 +109,41 @@ fun PlaylistRow(
             Spacer(modifier = Modifier.width(16.dp))
             
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = playlist.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = Color.White,
-                    maxLines = 1
-                )
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    val serviceColor = if (playlist.source == com.conduit.domain.model.MusicService.SPOTIFY) 
-                        Color(0xFF1DB954) else Color(0xFF00FFFF)
-                    
                     Text(
-                        text = playlist.source.name,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = serviceColor
+                        text = playlist.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color.White,
+                        maxLines = 1
                     )
+                    if (needsSync) {
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = "!",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = AccentSage,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                        )
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "Spotify",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFF1DB954)
+                    )
+                    if (isSyncedToTidal) {
+                        Text(
+                            text = " + ",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.Gray
+                        )
+                        Text(
+                            text = "Tidal",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color(0xFF00FFFF)
+                        )
+                    }
                     Text(
                         text = " • ",
                         color = Color.Gray

@@ -41,11 +41,22 @@ class AuthViewModel(
     private val settingsStorage: SettingsStorage,
 ) : ViewModel() {
 
+    companion object {
+        // Increment when Spotify scopes change to force re-authentication
+        private const val SPOTIFY_SCOPES_VERSION = 1
+    }
+
     private val _state = MutableStateFlow(AuthUiState())
     val state: StateFlow<AuthUiState> = _state.asStateFlow()
 
     init {
         viewModelScope.launch {
+            // Force re-auth if Spotify scopes have changed
+            if (settingsStorage.getScopesVersion() < SPOTIFY_SCOPES_VERSION) {
+                tokenStorage.clearTokens("spotify")
+                settingsStorage.saveScopesVersion(SPOTIFY_SCOPES_VERSION)
+            }
+
             val spotifyToken = tokenStorage.getAccessToken("spotify")
             val tidalToken = tokenStorage.getAccessToken("tidal")
             _state.update {

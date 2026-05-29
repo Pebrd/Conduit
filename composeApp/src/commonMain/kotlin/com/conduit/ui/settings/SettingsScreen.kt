@@ -243,6 +243,25 @@ fun SettingsScreen(
                 }
             }
 
+            // Last.fm Section
+            SettingsSection(title = "LAST.FM (DISCOVER)") {
+                OutlinedTextField(
+                    value = state.lastfmApiKey,
+                    onValueChange = viewModel::updateLastfmApiKey,
+                    label = { Text("API Key") },
+                    modifier = Modifier.fillMaxWidth(),
+                    textStyle = MaterialTheme.typography.labelSmall,
+                    colors = textFieldColors(),
+                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation()
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    "Necesitás una API key de last.fm/api para el Discover. Sin API key no funciona.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = OnSurfaceDim
+                )
+            }
+
             // Accounts Section
             SettingsSection(title = "CUENTAS") {
                 Row(

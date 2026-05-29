@@ -12,6 +12,8 @@ data class Track(
     val isrc: String? = null,
     val releaseYear: Int? = null,
     val imageUrl: String? = null,
+    val previewUrl: String? = null,
+    val artistIds: List<String> = emptyList(),
 )
 
 @Serializable

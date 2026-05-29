@@ -92,28 +92,24 @@ fun ArtistDetailScreen(
 
                 Spacer(Modifier.height(8.dp))
 
-                // Followers + Popularity
+                // Stats from Last.fm (listeners ≈ popularity)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(32.dp),
                 ) {
-                    StatChip("Followers", formatFollowers(a.followers))
-                    StatChip("Popularity", "${a.popularity}%")
+                    if (state.listeners > 0) {
+                        StatChip("Listeners", formatNumber(state.listeners))
+                    }
+                    if (state.playcount > 0) {
+                        StatChip("Plays", formatNumber(state.playcount))
+                    }
                 }
-
-                // Popularity bar
-                Spacer(Modifier.height(8.dp))
-                LinearProgressIndicator(
-                    progress = { a.popularity / 100f },
-                    modifier = Modifier.fillMaxWidth().height(4.dp),
-                    color = AccentSage,
-                    trackColor = SurfaceVariant,
-                )
 
                 Spacer(Modifier.height(20.dp))
 
-                // Genres
-                if (a.genres.isNotEmpty()) {
+                // Genres (from Last.fm tags + Spotify genres)
+                val allTags = (state.extraTags + a.genres.map { it.replaceFirstChar { c -> c.uppercase() } }).distinct()
+                if (allTags.isNotEmpty()) {
                     Text(
                         "Genres",
                         style = MaterialTheme.typography.titleMedium,
@@ -121,8 +117,7 @@ fun ArtistDetailScreen(
                         fontWeight = FontWeight.SemiBold,
                     )
                     Spacer(Modifier.height(8.dp))
-                    // Genre chips
-                    val rows = a.genres.chunked(3)
+                    val rows = allTags.chunked(4)
                     rows.forEach { row ->
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             row.forEach { genre ->
@@ -130,7 +125,7 @@ fun ArtistDetailScreen(
                                     onClick = {},
                                     label = {
                                         Text(
-                                            genre.replaceFirstChar { it.uppercase() },
+                                            genre,
                                             style = MaterialTheme.typography.labelSmall,
                                         )
                                     },
@@ -144,6 +139,24 @@ fun ArtistDetailScreen(
                         }
                         Spacer(Modifier.height(8.dp))
                     }
+                }
+
+                // Bio
+                if (state.bio.isNotBlank()) {
+                    Spacer(Modifier.height(20.dp))
+                    Text(
+                        "About",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color.White,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        state.bio,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = OnSurfaceDim,
+                        maxLines = 6,
+                    )
                 }
 
                 Spacer(Modifier.height(24.dp))
@@ -205,7 +218,7 @@ private fun ArtistTrackRow(rank: Int, track: TopTrackItem) {
     }
 }
 
-private fun formatFollowers(count: Int): String {
+private fun formatNumber(count: Int): String {
     return when {
         count >= 1_000_000 -> String.format("%.1fM", count / 1_000_000.0)
         count >= 1_000 -> String.format("%.1fK", count / 1_000.0)

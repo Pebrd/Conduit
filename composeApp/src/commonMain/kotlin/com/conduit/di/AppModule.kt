@@ -21,8 +21,9 @@ import com.conduit.ui.stats.*
 import com.conduit.ui.discover.*
 import com.conduit.domain.repository.*
 import com.conduit.domain.usecase.*
-import com.conduit.data.musicbrainz.*
 import com.conduit.data.itunes.*
+import com.conduit.data.deezer.*
+import com.conduit.data.lastfm.*
 import com.conduit.platform.*
 
 import io.ktor.client.request.*
@@ -62,8 +63,9 @@ val appModule = module {
     single<TidalRepository> { TidalRepositoryImpl(get(), get()) }
     
     // Discover clients
-    single { MusicBrainzClient(get()) }
     single { ITunesClient(get()) }
+    single { LastFmClient(get()) }
+    single { DeezerClient(get()) }
     single { AudioPreviewPlayer() }
 
     // Discover use cases

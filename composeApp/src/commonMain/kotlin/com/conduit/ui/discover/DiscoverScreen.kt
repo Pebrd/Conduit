@@ -148,17 +148,9 @@ private fun SwipeableCard(
     fun commitAction(direction: Float) {
         if (actionTriggered) return
         actionTriggered = true
-        if (direction > 0) {
-            scope.launch {
-                delay(250)
-                onLike(track)
-            }
-        } else {
-            scope.launch {
-                delay(250)
-                onSkip(track)
-            }
-        }
+        // Snap card fully off-screen and dispatch immediately
+        dragFraction = if (direction > 0) 1.5f else -1.5f
+        if (direction > 0) onLike(track) else onSkip(track)
     }
 
     // Reset when track changes

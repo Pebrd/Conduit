@@ -14,4 +14,5 @@ local.properties
 keystore-credentials.md
 keystore_password.txt
 nox_repo/
+repomix-output.xml
 

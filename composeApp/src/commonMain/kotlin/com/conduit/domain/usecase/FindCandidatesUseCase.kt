@@ -1,65 +1,140 @@
 package com.conduit.domain.usecase
 
+import com.conduit.data.deezer.DeezerClient
 import com.conduit.data.itunes.ITunesClient
-import com.conduit.data.musicbrainz.MusicBrainzClient
-import com.conduit.data.musicbrainz.MusicBrainzRecording
+import com.conduit.data.lastfm.LastFmClient
 import com.conduit.domain.model.*
-import kotlinx.coroutines.delay
+import com.conduit.domain.repository.SpotifyRepository
 
 class FindCandidatesUseCase(
-    private val mbClient: MusicBrainzClient,
+    private val spotifyRepo: SpotifyRepository,
+    private val lastFmClient: LastFmClient,
+    private val deezerClient: DeezerClient,
     private val iTunesClient: ITunesClient,
 ) {
-    suspend fun invoke(
-        profile: MoodProfile,
+    suspend operator fun invoke(
+        seedTrackIds: List<String>,
+        artistName: String,
         alreadySeen: Set<String>,
+        alreadySeenNames: Set<String> = emptySet(),
         limit: Int = 30,
     ): List<DiscoverTrack> {
-        val topGenres = profile.genres.entries
-            .sortedByDescending { it.value }
-            .take(3)
-            .map { it.key }
+        if (seedTrackIds.isEmpty()) return emptyList()
 
-        val candidates = mutableListOf<MusicBrainzRecording>()
+        val seenArtistTitles = mutableSetOf<String>()
+        seenArtistTitles.addAll(alreadySeenNames)
+        val seenIds = mutableSetOf<String>()
 
-        topGenres.forEach { genre ->
-            delay(1_100)
-            candidates.addAll(mbClient.searchByGenre(genre, limit = 15))
+        // Step 1: Fetch seed track names from Spotify
+        val seedTracks = seedTrackIds.mapNotNull { id ->
+            try { spotifyRepo.getTrack(id) } catch (_: Exception) { null }
         }
 
-        profile.relatedArtistMbids.take(3).forEach { artistMbid ->
-            delay(1_100)
-            candidates.addAll(mbClient.searchByArtist(artistMbid, limit = 10))
+        // Step 2: Use Last.fm track.getSimilar for recommendations
+        val searchQueries = mutableListOf<Pair<String, String>>() // trackName, artistName
+
+        if (lastFmClient.hasApiKey()) {
+            for (seed in seedTracks) {
+                val similar = lastFmClient.getSimilarTracks(seed.name, seed.artist, limit = 5)
+                similar.forEach { rec ->
+                    val recArtist = rec.artist?.name ?: return@forEach
+                    if (rec.name.isNotBlank() && recArtist.isNotBlank()) {
+                        searchQueries.add(rec.name to recArtist)
+                    }
+                }
+            }
         }
 
-        val filtered = candidates
-            .distinctBy { it.mbid }
-            .filter { it.mbid !in alreadySeen }
-            .filter { it.isrc !in profile.seedIsrcs }
+        // Step 3: Fallback — Deezer
+        if (searchQueries.isEmpty() && artistName.isNotBlank()) {
+            val deezerQueries = deezerClient.getSimilarArtistsTopTracks(artistName, 5, 5)
+            deezerQueries.forEach { query ->
+                // query is "trackName artistName" — split to use field search
+                val parts = query.split(" ")
+                if (parts.size >= 2) {
+                    val artist = parts.last()
+                    val track = parts.dropLast(1).joinToString(" ")
+                    searchQueries.add(track to artist)
+                } else {
+                    searchQueries.add(query to artistName)
+                }
+            }
+        }
 
-        return filtered.mapNotNull { recording ->
-            val iTunes = recording.isrc?.let { iTunesClient.getPreview(it) }
-                ?: iTunesClient.searchPreview("${recording.title} ${recording.artist}")
-            iTunes ?: return@mapNotNull null
+        // Step 4: Last resort — search by seed artist directly
+        if (searchQueries.isEmpty() && artistName.isNotBlank()) {
+            searchQueries.add("" to artistName)
+        }
 
+        // Step 5: Search each recommendation on Spotify with field-filtered query
+        val tracks = mutableListOf<Track>()
+
+        fun normalize(t: Track): String =
+            "${t.name.lowercase().replace(Regex("""\s*\(.*?\)"""), "").replace(Regex("""\s*[–\-].*$"""), "").trim()} :: ${t.artist.lowercase().trim()}"
+
+        for ((recTrackName, recArtist) in searchQueries) {
+            if (tracks.size >= limit) break
+            try {
+                val query = if (recTrackName.isNotBlank()) {
+                    "track:\"${recTrackName.replace("\"", "")}\" artist:\"${recArtist.replace("\"", "")}\""
+                } else {
+                    "artist:\"${recArtist.replace("\"", "")}\""
+                }
+                val results = spotifyRepo.searchTracksByQuery(query, limit = 3)
+                results.filter { it.id !in alreadySeen && it.id !in seenIds }.forEach { track ->
+                    val norm = normalize(track)
+                    if (norm in seenArtistTitles) return@forEach
+                    seenIds.add(track.id)
+                    seenArtistTitles.add(norm)
+                    tracks.add(track)
+                }
+            } catch (_: Exception) { }
+            if (tracks.size >= limit) break
+        }
+
+        // Step 6: If we got too few results, do a broader fallback search
+        if (tracks.size < limit / 2 && artistName.isNotBlank()) {
+            try {
+                val broadQuery = "artist:\"${artistName.replace("\"", "")}\""
+                val more = spotifyRepo.searchTracksByQuery(broadQuery, limit = limit - tracks.size)
+                more.filter { it.id !in alreadySeen && it.id !in seenIds }.forEach { track ->
+                    val norm = normalize(track)
+                    if (norm in seenArtistTitles) return@forEach
+                    seenIds.add(track.id)
+                    seenArtistTitles.add(norm)
+                    tracks.add(track)
+                }
+            } catch (_: Exception) { }
+        }
+
+        return tracks.map { track ->
+            val previewUrl = track.previewUrl ?: findITunesPreview(track)
             DiscoverTrack(
-                mbid = recording.mbid,
-                name = recording.title,
-                artist = recording.artist,
-                album = "",
-                durationMs = recording.durationMs,
-                isrc = recording.isrc,
-                genres = recording.tags.take(3),
-                previewUrl = iTunes.previewUrl,
-                artworkUrl = iTunes.artworkUrl,
-                matchScore = computeMatchScore(recording.tags, profile),
+                mbid = track.id,
+                name = track.name,
+                artist = track.artist,
+                album = track.album,
+                durationMs = track.durationMs,
+                isrc = track.isrc,
+                previewUrl = previewUrl,
+                artworkUrl = track.imageUrl,
+                matchScore = 1.0,
             )
-        }.sortedByDescending { it.matchScore }
-            .take(limit)
+        }
     }
 
-    private fun computeMatchScore(trackTags: List<String>, profile: MoodProfile): Double {
-        val allWeights = profile.genres + profile.tags
-        return trackTags.sumOf { tag -> allWeights[tag] ?: 0.0 } / trackTags.size.coerceAtLeast(1)
+    suspend fun refill(
+        seedTrackIds: List<String>,
+        artistName: String,
+        alreadySeen: Set<String>,
+        alreadySeenNames: Set<String> = emptySet(),
+        limit: Int = 20,
+    ): List<DiscoverTrack> = invoke(seedTrackIds, artistName, alreadySeen, alreadySeenNames, limit)
+
+    private suspend fun findITunesPreview(track: Track): String? {
+        return try {
+            track.isrc?.let { iTunesClient.getPreview(it) }?.previewUrl
+                ?: iTunesClient.searchPreview("${track.name} ${track.artist}")?.previewUrl
+        } catch (_: Exception) { null }
     }
 }

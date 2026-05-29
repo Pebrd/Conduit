@@ -20,8 +20,11 @@ data class DiscoverTrack(
 data class DiscoverSession(
     val seed: DiscoverSeed,
     val destination: DiscoverDestination,
-    val moodProfile: MoodProfile,
-    val seenTrackMbids: Set<String> = emptySet(),
+    val seedTrackIds: List<String> = emptyList(),
+    val seedArtistName: String = "",
+    val recommendationSource: String = "",
+    val seenTrackIds: Set<String> = emptySet(),
+    val seenTrackNames: Set<String> = emptySet(),
     val likedTracks: List<DiscoverTrack> = emptyList(),
 )
 

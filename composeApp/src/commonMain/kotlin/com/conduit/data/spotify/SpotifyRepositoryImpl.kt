@@ -37,4 +37,10 @@ class SpotifyRepositoryImpl(
         apiClient.createPlaylist(name)
     override suspend fun addTrackToPlaylist(playlistId: String, trackId: String) =
         apiClient.addTrackToPlaylist(playlistId, trackId)
+
+    override suspend fun getRecommendationsViaRelatedArtists(
+        seedTrackIds: List<String>,
+        alreadySeen: Set<String>,
+        limit: Int,
+    ): List<Track> = apiClient.getRecommendationsViaRelatedArtists(seedTrackIds, alreadySeen, limit)
 }

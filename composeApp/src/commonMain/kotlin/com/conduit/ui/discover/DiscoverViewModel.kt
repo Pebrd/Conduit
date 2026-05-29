@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.conduit.data.itunes.ITunesClient
 import com.conduit.data.itunes.toTrack
+import com.conduit.data.lastfm.LastFmClient
+import com.conduit.data.local.SettingsStorage
 import com.conduit.domain.model.*
 import com.conduit.domain.repository.SpotifyRepository
 import com.conduit.domain.usecase.*
@@ -37,6 +39,8 @@ data class DiscoverUiState(
 class DiscoverViewModel(
     private val spotifyRepo: SpotifyRepository,
     private val iTunesClient: ITunesClient,
+    private val lastFmClient: LastFmClient,
+    private val settingsStorage: SettingsStorage,
     private val buildMoodProfile: BuildMoodProfileUseCase,
     private val findCandidates: FindCandidatesUseCase,
     private val handleLike: HandleLikeUseCase,
@@ -51,6 +55,7 @@ class DiscoverViewModel(
     private var cachedCandidates: List<DiscoverTrack>? = null
 
     init {
+        lastFmClient.setApiKey(settingsStorage.lastfmApiKey)
         loadPlaylists()
     }
 
@@ -65,7 +70,7 @@ class DiscoverViewModel(
         }
     }
 
-    // ── Real-time Spotify search (debounced) ──
+    // ── Real-time search (debounced) ──
 
     fun searchTracks(query: String) {
         if (query.isBlank()) {
@@ -76,25 +81,21 @@ class DiscoverViewModel(
 
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
-            delay(300) // debounce
+            delay(300)
             _state.update { it.copy(isSearching = true, error = null) }
 
-            // 1) Try Spotify first (has popularity ordering + album art)
             try {
-                val tracks = spotifyRepo.searchTracksByQuery(query, limit = 15)
+                val tracks = spotifyRepo.searchTracksByQuery(query)
                 if (tracks.isNotEmpty()) {
                     _state.update { it.copy(searchResults = tracks, isSearching = false) }
                     return@launch
                 }
             } catch (ce: kotlinx.coroutines.CancellationException) {
-                throw ce // propagate cancellation
-            } catch (_: Exception) {
-                // Spotify failed, fall through to iTunes
-            }
+                throw ce
+            } catch (_: Exception) { }
 
-            // 2) Fallback: iTunes Search API (no auth needed)
             try {
-                val tracks = iTunesClient.searchTracks(query, limit = 15).map { it.toTrack() }
+                val tracks = iTunesClient.searchTracks(query).map { it.toTrack() }
                 _state.update { it.copy(searchResults = tracks, isSearching = false) }
             } catch (ce: kotlinx.coroutines.CancellationException) {
                 throw ce
@@ -110,13 +111,14 @@ class DiscoverViewModel(
         viewModelScope.launch {
             _state.update { it.copy(isBuilding = true, error = null) }
             try {
-                val profile = buildMoodProfile.fromTrack(track)
+                val seedTrackIds = buildMoodProfile.fromTrack(track)
                 val playlistName = generatePlaylistName(DiscoverSeed.FromTrack(
                     trackId = track.id,
                     trackName = track.name,
                     artist = track.artist,
                     isrc = track.isrc,
                 ))
+                val recSource = if (lastFmClient.hasApiKey()) "Last.fm" else "Deezer"
                 val session = DiscoverSession(
                     seed = DiscoverSeed.FromTrack(track.id, track.name, track.artist, track.isrc),
                     destination = DiscoverDestination(
@@ -124,7 +126,10 @@ class DiscoverViewModel(
                         playlistId = null,
                         playlistName = playlistName,
                     ),
-                    moodProfile = profile,
+                    seedTrackIds = seedTrackIds,
+                    seedArtistName = track.artist.split(",").first().trim(),
+                    recommendationSource = recSource,
+                    seenTrackIds = seedTrackIds.toSet(),
                 )
                 _state.update {
                     it.copy(session = session, isBuilding = false, step = DiscoverStep.DESTINATION)
@@ -140,7 +145,11 @@ class DiscoverViewModel(
         viewModelScope.launch {
             _state.update { it.copy(isBuilding = true, error = null) }
             try {
-                val profile = buildMoodProfile.fromPlaylist(playlist.id)
+                val seedTrackIds = buildMoodProfile.fromPlaylist(playlist.id)
+                val firstArtist = seedTrackIds.firstOrNull()?.let { id ->
+                    try { spotifyRepo.searchTracksByQuery(id).firstOrNull()?.artist?.split(",")?.first()?.trim() } catch (_: Exception) { null }
+                } ?: ""
+                val recSource = if (lastFmClient.hasApiKey()) "Last.fm" else "Deezer"
                 val session = DiscoverSession(
                     seed = DiscoverSeed.FromPlaylist(playlist.id, playlist.name, playlist.imageUrl),
                     destination = DiscoverDestination(
@@ -148,7 +157,10 @@ class DiscoverViewModel(
                         playlistId = playlist.id,
                         playlistName = playlist.name,
                     ),
-                    moodProfile = profile,
+                    seedTrackIds = seedTrackIds,
+                    seedArtistName = firstArtist,
+                    recommendationSource = recSource,
+                    seenTrackIds = seedTrackIds.toSet(),
                 )
                 _state.update {
                     it.copy(session = session, isBuilding = false, step = DiscoverStep.DESTINATION)
@@ -167,13 +179,11 @@ class DiscoverViewModel(
         val session = _state.value.session ?: return
         preloadJob = viewModelScope.launch {
             try {
-                val candidates = findCandidates.invoke(session.moodProfile, session.seenTrackMbids)
+                val candidates = findCandidates.invoke(session.seedTrackIds, session.seedArtistName, session.seenTrackIds, alreadySeenNames = session.seenTrackNames)
                 cachedCandidates = candidates
             } catch (ce: kotlinx.coroutines.CancellationException) {
                 throw ce
-            } catch (_: Exception) {
-                // Silently fail — will retry in confirmDestination
-            }
+            } catch (_: Exception) { }
         }
     }
 
@@ -205,7 +215,29 @@ class DiscoverViewModel(
     fun confirmDestination() {
         val session = _state.value.session ?: return
 
-        // Use pre-loaded candidates if available
+        if (session.destination.playlistId != null) {
+            // Destination is an existing playlist — fetch its tracks to exclude them
+            viewModelScope.launch {
+                _state.update { it.copy(isBuilding = true) }
+                try {
+                    val existingTracks = spotifyRepo.getPlaylistTracks(session.destination.playlistId)
+                    val existingIds = existingTracks.map { it.id }.toSet()
+                    val existingNames = existingTracks.map { t ->
+                        "${t.name.lowercase().replace(Regex("""\s*\(.*?\)"""), "").replace(Regex("""\s*[–\-].*$"""), "").trim()} :: ${t.artist.lowercase().trim()}"
+                    }.toSet()
+                    val updatedSession = session.copy(
+                        seenTrackIds = session.seenTrackIds + existingIds,
+                        seenTrackNames = session.seenTrackNames + existingNames,
+                    )
+                    startSwiping(updatedSession)
+                } catch (_: Exception) {
+                    startSwiping(session)
+                }
+            }
+            return
+        }
+
+        // New playlist — use cached candidates if available, else fetch fresh
         if (cachedCandidates != null) {
             _state.update {
                 it.copy(
@@ -219,7 +251,6 @@ class DiscoverViewModel(
             return
         }
 
-        // Otherwise fetch synchronously (show loading)
         _state.update { it.copy(isBuilding = true) }
         startSwiping(session)
     }
@@ -229,7 +260,7 @@ class DiscoverViewModel(
     private fun startSwiping(session: DiscoverSession) {
         viewModelScope.launch {
             try {
-                val candidates = findCandidates.invoke(session.moodProfile, session.seenTrackMbids)
+                val candidates = findCandidates.invoke(session.seedTrackIds, session.seedArtistName, session.seenTrackIds, alreadySeenNames = session.seenTrackNames)
                 _state.update {
                     it.copy(
                         session = session,
@@ -254,10 +285,7 @@ class DiscoverViewModel(
 
     fun like(track: DiscoverTrack) {
         val session = _state.value.session?.copy() ?: return
-        viewModelScope.launch {
-            delay(250) // let swipe animation finish
-            nextCard(track, liked = true)
-        }
+        nextCard(track, liked = true)
         viewModelScope.launch {
             try {
                 handleLike.invoke(track, session) { newPlaylistId ->
@@ -276,25 +304,23 @@ class DiscoverViewModel(
     }
 
     fun skip(track: DiscoverTrack) {
-        viewModelScope.launch {
-            delay(250) // let swipe animation finish
-            nextCard(track, liked = false)
-        }
+        nextCard(track, liked = false)
     }
 
     private fun nextCard(track: DiscoverTrack, liked: Boolean) {
-        audioPlayer.stop() // stop old preview
+        audioPlayer.stop()
         _state.update { current ->
-            val newSeen = current.session?.seenTrackMbids?.plus(track.mbid) ?: setOf(track.mbid)
+            val normalizedName = "${track.name.lowercase().replace(Regex("""\s*\(.*?\)"""), "").replace(Regex("""\s*[–\-].*$"""), "").trim()} :: ${track.artist.lowercase().trim()}"
+            val newSeen = current.session?.seenTrackIds?.plus(track.mbid) ?: setOf(track.mbid)
+            val newSeenNames = current.session?.seenTrackNames?.plus(normalizedName) ?: setOf(normalizedName)
             val newLiked = if (liked) (current.session?.likedTracks?.plus(track) ?: listOf(track)) else (current.session?.likedTracks ?: emptyList())
             val newQueue = current.queue.drop(1)
 
             if (newQueue.size < 5) viewModelScope.launch { refillQueue() }
 
             current.copy(
-                session = current.session?.copy(seenTrackMbids = newSeen, likedTracks = newLiked),
+                session = current.session?.copy(seenTrackIds = newSeen, seenTrackNames = newSeenNames, likedTracks = newLiked),
                 queue = newQueue,
-                // isPlaying not reset — autoPlay via LaunchedEffect handles it
             )
         }
     }
@@ -316,8 +342,11 @@ class DiscoverViewModel(
 
     private suspend fun refillQueue() {
         val session = _state.value.session ?: return
-        if (session.moodProfile.genres.isEmpty()) return
-        val more = findCandidates.invoke(session.moodProfile, session.seenTrackMbids, limit = 20)
+        if (session.seedTrackIds.isEmpty()) return
+        // Include up to 5 most recently liked tracks as additional seeds for better recs
+        val likedSeeds = session.likedTracks.takeLast(5).map { it.mbid }
+        val allSeeds = session.seedTrackIds + likedSeeds
+        val more = findCandidates.refill(allSeeds, session.seedArtistName, session.seenTrackIds, alreadySeenNames = session.seenTrackNames, limit = 20)
         _state.update { current ->
             current.copy(queue = current.queue + more)
         }

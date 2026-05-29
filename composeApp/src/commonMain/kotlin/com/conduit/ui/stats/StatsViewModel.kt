@@ -2,6 +2,7 @@ package com.conduit.ui.stats
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.conduit.data.lastfm.LastFmClient
 import com.conduit.domain.model.*
 import com.conduit.domain.usecase.*
 import kotlinx.coroutines.async
@@ -51,6 +52,10 @@ data class TrackDetailState(
 data class ArtistDetailState(
     val artist: TopArtistItem? = null,
     val topTracks: List<TopTrackItem> = emptyList(),
+    val listeners: Int = 0,
+    val playcount: Int = 0,
+    val bio: String = "",
+    val extraTags: List<String> = emptyList(),
     val isLoading: Boolean = false,
     val error: String? = null,
 )
@@ -63,6 +68,7 @@ class StatsViewModel(
     private val getMoodAnalysisUseCase: GetMoodAnalysisUseCase,
     private val getArtistTopTracksUseCase: GetArtistTopTracksUseCase,
     private val getTrackAudioFeaturesUseCase: GetTrackAudioFeaturesUseCase,
+    private val lastFmClient: LastFmClient,
 ) : ViewModel() {
 
     private val _dashboardState = MutableStateFlow(StatsDashboardState())
@@ -82,6 +88,10 @@ class StatsViewModel(
 
     private val _artistDetailState = MutableStateFlow(ArtistDetailState())
     val artistDetailState = _artistDetailState.asStateFlow()
+
+    // Cache of full artist/track data from list loads (API detail endpoints omit popularity/followers/genres)
+    private val cachedArtists = mutableMapOf<String, TopArtistItem>()
+    private val cachedTracks = mutableMapOf<String, TopTrackItem>()
 
     init {
         loadDashboard()
@@ -104,6 +114,10 @@ class StatsViewModel(
                 val recent = recentlyPlayedDeferred.await()
                 val mood = moodDeferred.await()
                 val genres = genresDeferred.await()
+
+                // Populate caches for detail screens
+                artists.forEach { cachedArtists[it.id] = it }
+                tracks.forEach { cachedTracks[it.id] = it }
 
                 _dashboardState.update {
                     it.copy(
@@ -129,6 +143,7 @@ class StatsViewModel(
             _topArtistsState.update { it.copy(isLoading = true, error = null, selectedTimeRange = timeRange) }
             try {
                 val artists = getTopArtistsUseCase(timeRange, 50)
+                artists.forEach { cachedArtists[it.id] = it }
                 _topArtistsState.update { it.copy(artists = artists, isLoading = false) }
             } catch (e: Exception) {
                 _topArtistsState.update { it.copy(isLoading = false, error = e.message) }
@@ -141,6 +156,7 @@ class StatsViewModel(
             _topTracksState.update { it.copy(isLoading = true, error = null, selectedTimeRange = timeRange) }
             try {
                 val tracks = getTopTracksUseCase(timeRange, 50)
+                tracks.forEach { cachedTracks[it.id] = it }
                 _topTracksState.update { it.copy(tracks = tracks, isLoading = false) }
             } catch (e: Exception) {
                 _topTracksState.update { it.copy(isLoading = false, error = e.message) }
@@ -164,7 +180,8 @@ class StatsViewModel(
         viewModelScope.launch {
             _trackDetailState.update { TrackDetailState(isLoading = true, error = null) }
             try {
-                val track = getTopTracksUseCase.getTrackById(trackId)
+                // Check cache first — API detail endpoint may omit popularity
+                val track = cachedTracks[trackId] ?: getTopTracksUseCase.getTrackById(trackId)
                 val features = if (track != null) getTrackAudioFeaturesUseCase(track.id) else null
                 _trackDetailState.update {
                     TrackDetailState(track = track, audioFeatures = features, isLoading = false)
@@ -179,10 +196,37 @@ class StatsViewModel(
         viewModelScope.launch {
             _artistDetailState.update { ArtistDetailState(isLoading = true, error = null) }
             try {
-                val artist = getTopArtistsUseCase.getArtistById(artistId)
+                // Get base artist data from Spotify (id, name, image)
+                val artist = cachedArtists[artistId] ?: getTopArtistsUseCase.getArtistById(artistId)
                 val topTracks = if (artist != null) getArtistTopTracksUseCase(artist.id) else emptyList()
+
+                // Get enriched data from Last.fm (listeners, playcount, tags, bio)
+                var extraListeners = 0
+                var extraPlaycount = 0
+                var extraBio = ""
+                var extraTags = emptyList<String>()
+                if (artist != null && lastFmClient.hasApiKey()) {
+                    try {
+                        val info = lastFmClient.getArtistInfo(artist.name)
+                        if (info != null) {
+                            extraListeners = info.stats?.listeners?.toIntOrNull() ?: 0
+                            extraPlaycount = info.stats?.playcount?.toIntOrNull() ?: 0
+                            extraBio = info.bio?.summary?.replace(Regex("<[^>]*>"), "")?.trim() ?: ""
+                            extraTags = info.tags?.tag?.map { it.name.replaceFirstChar { c -> c.uppercase() } }?.filter { it.isNotBlank() }?.take(10) ?: emptyList()
+                        }
+                    } catch (_: Exception) { /* Last.fm fallback silently */ }
+                }
+
                 _artistDetailState.update {
-                    ArtistDetailState(artist = artist, topTracks = topTracks, isLoading = false)
+                    ArtistDetailState(
+                        artist = artist,
+                        topTracks = topTracks,
+                        listeners = extraListeners,
+                        playcount = extraPlaycount,
+                        bio = extraBio,
+                        extraTags = extraTags,
+                        isLoading = false,
+                    )
                 }
             } catch (e: Exception) {
                 _artistDetailState.update { it.copy(isLoading = false, error = e.message) }

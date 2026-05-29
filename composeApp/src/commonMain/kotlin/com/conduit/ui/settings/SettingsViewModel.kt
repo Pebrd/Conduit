@@ -18,6 +18,7 @@ data class SettingsUiState(
     val spotifyClientSecret: String = "",
     val tidalClientId: String = "",
     val tidalClientSecret: String = "",
+    val lastfmApiKey: String = "",
     val isSpotifyConnected: Boolean = false,
     val isTidalConnected: Boolean = false,
     val isLoading: Boolean = false,
@@ -42,7 +43,8 @@ class SettingsViewModel(
             spotifyClientId = settingsStorage.spotifyClientId,
             spotifyClientSecret = settingsStorage.spotifyClientSecret,
             tidalClientId = settingsStorage.tidalClientId,
-            tidalClientSecret = settingsStorage.tidalClientSecret
+            tidalClientSecret = settingsStorage.tidalClientSecret,
+            lastfmApiKey = settingsStorage.lastfmApiKey
         ) }
         viewModelScope.launch {
             val spotifyToken = tokenStorage.getAccessToken("spotify")
@@ -72,6 +74,11 @@ class SettingsViewModel(
     fun updateTidalClientSecret(secret: String) {
         settingsStorage.tidalClientSecret = secret
         _uiState.update { it.copy(tidalClientSecret = secret) }
+    }
+
+    fun updateLastfmApiKey(key: String) {
+        settingsStorage.lastfmApiKey = key
+        _uiState.update { it.copy(lastfmApiKey = key) }
     }
 
     fun connectSpotify() {

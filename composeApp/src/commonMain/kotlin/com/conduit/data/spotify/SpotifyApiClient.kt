@@ -124,6 +124,7 @@ class SpotifyApiClient(
             header(HttpHeaders.Authorization, "Bearer $token")
         }
         val body = response.bodyAsText()
+        println("DEBUG PROFILE: status=${response.status} body=$body")
         return Json { ignoreUnknownKeys = true }
             .decodeFromString<SpotifyProfileDto>(body)
             .toDomain()
@@ -200,14 +201,12 @@ class SpotifyApiClient(
             header(HttpHeaders.Authorization, "Bearer $token")
         }
         val body = response.bodyAsText()
-        println("DEBUG ARTIST DETAIL RAW: $body")
         if (response.status != HttpStatusCode.OK) {
             throw Exception("Artist detail API error ${response.status}: $body")
         }
-        val dto = Json { ignoreUnknownKeys = true }
+        return Json { ignoreUnknownKeys = true }
             .decodeFromString<SpotifyTopArtistDto>(body)
-        println("DEBUG ARTIST DETAIL DTO: id=${dto.id} name=${dto.name} popularity=${dto.popularity} followers=${dto.followers?.total}")
-        return dto.toDomain()
+            .toDomain()
     }
 
     suspend fun getTrack(trackId: String): TopTrackItem? {
@@ -216,14 +215,12 @@ class SpotifyApiClient(
             header(HttpHeaders.Authorization, "Bearer $token")
         }
         val body = response.bodyAsText()
-        println("DEBUG TRACK DETAIL RAW: $body")
         if (response.status != HttpStatusCode.OK) {
             throw Exception("Track detail API error ${response.status}: $body")
         }
-        val dto = Json { ignoreUnknownKeys = true }
+        return Json { ignoreUnknownKeys = true }
             .decodeFromString<SpotifyTopTrackDto>(body)
-        println("DEBUG TRACK DETAIL DTO: id=${dto.id} name=${dto.name} popularity=${dto.popularity}")
-        return dto.toDomain()
+            .toDomain()
     }
 
     suspend fun getAudioFeatures(trackIds: List<String>): List<AudioFeaturesItem> {
@@ -269,11 +266,10 @@ class SpotifyApiClient(
 
     suspend fun searchTracksByQuery(query: String, limit: Int = 20): List<Track> {
         val token = tokenRefreshPlugin.getValidToken("spotify")
-        val response = client.get("https://api.spotify.com/v1/search") {
+        val url = "https://api.spotify.com/v1/search?q=${query.encodeURLParameter()}&type=track"
+        println("DEBUG SPOTIFY SEARCH URL: $url")
+        val response = client.get(url) {
             header(HttpHeaders.Authorization, "Bearer $token")
-            parameter("q", query)
-            parameter("type", "track")
-            parameter("limit", limit)
         }
         val bodyString = response.bodyAsText()
         println("DEBUG SPOTIFY SEARCH: status=${response.status} q=$query body=${bodyString.take(500)}")
@@ -292,6 +288,97 @@ class SpotifyApiClient(
             println("DEBUG SPOTIFY SEARCH PARSE ERROR: ${e.message}")
             emptyList()
         }
+    }
+
+    // ── Discover: Related Artists + Top Tracks (replaces /recommendations) ──
+
+    private suspend fun spotifySearch(query: String): List<Track> {
+        val token = tokenRefreshPlugin.getValidToken("spotify")
+        val url = "https://api.spotify.com/v1/search?q=${query.encodeURLParameter()}&type=track"
+        println("DEBUG SPOTIFY SEARCH: $url")
+        val response = client.get(url) {
+            header(HttpHeaders.Authorization, "Bearer $token")
+        }
+        val body = response.bodyAsText()
+        if (response.status != HttpStatusCode.OK) {
+            println("DEBUG SPOTIFY SEARCH FAILED: status=${response.status} body=${body.take(200)}")
+            return emptyList()
+        }
+        val json = Json { ignoreUnknownKeys = true }
+        return try {
+            json.parseToJsonElement(body)
+                .jsonObject["tracks"]?.jsonObject
+                ?.get("items")?.jsonArray
+                ?.mapNotNull { parseSpotifyTrackItem(it.jsonObject) }
+                ?: emptyList()
+        } catch (e: Exception) {
+            println("DEBUG SPOTIFY SEARCH PARSE ERROR: ${e.message}")
+            emptyList()
+        }
+    }
+
+    suspend fun getRelatedArtists(artistId: String): List<String> {
+        val token = tokenRefreshPlugin.getValidToken("spotify")
+        val response = client.get("https://api.spotify.com/v1/artists/$artistId/related-artists") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+        }
+        val bodyString = response.bodyAsText()
+        println("DEBUG SPOTIFY RELATED: status=${response.status} artist=$artistId body=${bodyString.take(300)}")
+        if (response.status != HttpStatusCode.OK) return emptyList()
+        val json = Json { ignoreUnknownKeys = true }
+        return try {
+            json.parseToJsonElement(bodyString)
+                .jsonObject["artists"]?.jsonArray
+                ?.mapNotNull { it.jsonObject["id"]?.jsonPrimitive?.content }
+                ?: emptyList()
+        } catch (e: Exception) {
+            println("DEBUG SPOTIFY RELATED PARSE ERROR: ${e.message}")
+            emptyList()
+        }
+    }
+
+    suspend fun getRecommendationsViaRelatedArtists(
+        seedTrackIds: List<String>,
+        alreadySeen: Set<String> = emptySet(),
+        limit: Int = 30,
+    ): List<Track> {
+        if (seedTrackIds.isEmpty()) return emptyList()
+
+        // 1. Re-fetch seed tracks to get their artist names
+        val seedInfo = seedTrackIds.mapNotNull { id ->
+            val response = client.get("https://api.spotify.com/v1/tracks/$id") {
+                header(HttpHeaders.Authorization, "Bearer ${tokenRefreshPlugin.getValidToken("spotify")}")
+            }
+            if (response.status != HttpStatusCode.OK) return@mapNotNull null
+            val obj = Json { ignoreUnknownKeys = true }
+                .parseToJsonElement(response.bodyAsText()).jsonObject
+            parseSpotifyTrackItem(obj)
+        }
+
+        val allTracks = mutableListOf<Track>()
+
+        // 2. Search by multiple queries for variety
+        for (track in seedInfo) {
+            val artist = track.artist.split(",").first().trim()
+            val safeName = artist.replace("\"", "")
+
+            // a) Search by artist name (tracks by same artist)
+            val byArtist = spotifySearch("artist:\"$safeName\"")
+            println("DEBUG SPOTIFY RECS: artist='$artist' search returned ${byArtist.size} tracks")
+            allTracks.addAll(byArtist)
+
+            // b) Free-text search (mixes artists)
+            val broad = spotifySearch(safeName)
+            println("DEBUG SPOTIFY RECS: broad='$artist' search returned ${broad.size} tracks")
+            allTracks.addAll(broad)
+        }
+
+        // 3. Dedup + filter
+        println("DEBUG SPOTIFY RECS: total=${allTracks.size} before dedup/filter")
+        return allTracks
+            .distinctBy { it.id }
+            .filter { it.id !in alreadySeen && it.id !in seedTrackIds }
+            .take(limit)
     }
 
     suspend fun searchByIsrc(isrc: String): Track? {
@@ -354,9 +441,9 @@ class SpotifyApiClient(
     private fun parseSpotifyTrackItem(obj: JsonObject): Track? {
         val id = obj["id"]?.jsonPrimitive?.content ?: return null
         val name = obj["name"]?.jsonPrimitive?.content ?: return null
-        val artistNames = obj["artists"]?.jsonArray
-            ?.mapNotNull { it.jsonObject["name"]?.jsonPrimitive?.content }
-            ?: return null
+        val artistsArr = obj["artists"]?.jsonArray ?: return null
+        val artistNames = artistsArr.mapNotNull { it.jsonObject["name"]?.jsonPrimitive?.content }
+        val artistIds = artistsArr.mapNotNull { it.jsonObject["id"]?.jsonPrimitive?.content }
         val album = obj["album"]?.jsonObject
         return Track(
             id = id,
@@ -365,8 +452,10 @@ class SpotifyApiClient(
             album = album?.get("name")?.jsonPrimitive?.content ?: "",
             durationMs = obj["duration_ms"]?.jsonPrimitive?.longOrNull ?: 0L,
             isrc = obj["external_ids"]?.jsonObject?.get("isrc")?.jsonPrimitive?.contentOrNull,
+            previewUrl = obj["preview_url"]?.jsonPrimitive?.contentOrNull,
             imageUrl = album?.get("images")?.jsonArray
                 ?.firstOrNull()?.jsonObject?.get("url")?.jsonPrimitive?.content,
+            artistIds = artistIds,
         )
     }
 }
@@ -442,7 +531,8 @@ internal data class SpotifyTrackDto(
     val artists: List<SpotifyArtistDto>? = null,
     val album: SpotifyAlbumDto? = null,
     val duration_ms: Long? = null,
-    val external_ids: ExternalIds? = null
+    val external_ids: ExternalIds? = null,
+    val preview_url: String? = null,
 ) {
     fun toDomain() = Track(
         id = id ?: "",
@@ -451,7 +541,9 @@ internal data class SpotifyTrackDto(
         album = album?.name ?: "Unknown Album",
         durationMs = duration_ms ?: 0L,
         isrc = external_ids?.isrc,
-        imageUrl = album?.images?.firstOrNull()?.url
+        imageUrl = album?.images?.firstOrNull()?.url,
+        previewUrl = preview_url,
+        artistIds = artists?.mapNotNull { it.id } ?: emptyList(),
     )
 }
 
@@ -461,7 +553,10 @@ internal data class ExternalIds(
 )
 
 @Serializable
-internal data class SpotifyArtistDto(val name: String)
+internal data class SpotifyArtistDto(
+    val name: String,
+    val id: String? = null,
+)
 
 @Serializable
 internal data class SpotifyAlbumDto(
