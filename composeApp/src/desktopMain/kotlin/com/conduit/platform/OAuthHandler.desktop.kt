@@ -27,7 +27,7 @@ class DesktopOAuthHandler(
         val codeVerifier = generateCodeVerifier()
         val codeChallenge = generateCodeChallenge(codeVerifier)
         val redirectUri = "http://127.0.0.1:8888/spotify/callback"
-        val scopes = "playlist-read-private playlist-read-collaborative user-library-read user-read-private user-read-email"
+        val scopes = "playlist-read-private playlist-read-collaborative user-library-read user-read-private user-read-email user-top-read user-read-recently-played"
 
         val deferredCode = CompletableDeferred<String?>()
 

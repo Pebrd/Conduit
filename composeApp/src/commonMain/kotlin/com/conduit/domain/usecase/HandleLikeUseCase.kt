@@ -11,10 +11,14 @@ class HandleLikeUseCase(
     suspend fun invoke(track: DiscoverTrack, session: DiscoverSession, onPlaylistCreated: (String) -> Unit) {
         val dest = session.destination
 
+        // NONE = don't save likes anywhere
+        if (dest.platform == MusicService.NONE) return
+
         val targetPlaylistId = if (dest.playlistId == null) {
             when (dest.platform) {
                 MusicService.SPOTIFY -> spotifyRepo.createPlaylist(dest.playlistName)
                 MusicService.TIDAL -> tidalRepo.createPlaylist(dest.playlistName, "Creada por Conduit Discover")
+                MusicService.NONE -> return
             }.also { newId -> onPlaylistCreated(newId) }
         } else {
             dest.playlistId
@@ -31,6 +35,7 @@ class HandleLikeUseCase(
                     ?: tidalRepo.searchTracks("${track.name} ${track.artist}").firstOrNull()
                 tidalTrack?.let { tidalRepo.addTracksToPlaylist(targetPlaylistId, listOf(it.id)) }
             }
+            MusicService.NONE -> {}
         }
     }
 }

@@ -97,6 +97,21 @@ class MusicBrainzClient(private val client: HttpClient) {
             ?: emptyList()
     }
 
+    suspend fun searchRecordings(query: String, limit: Int = 10): List<MusicBrainzRecording> = withRateLimit {
+        val response = client.get("https://musicbrainz.org/ws/2/recording") {
+            header("User-Agent", userAgent)
+            parameter("query", query)
+            parameter("fmt", "json")
+            parameter("limit", limit)
+        }
+        if (!response.status.isSuccess()) return@withRateLimit emptyList()
+        Json { ignoreUnknownKeys = true }
+            .parseToJsonElement(response.bodyAsText())
+            .jsonObject["recordings"]?.jsonArray
+            ?.mapNotNull { parseRecording(it.jsonObject) }
+            ?: emptyList()
+    }
+
     private suspend fun <T> withRateLimit(block: suspend () -> T): T = rateLimiter.withPermit {
         delay(1_100)
         block()

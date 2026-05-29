@@ -1,6 +1,7 @@
 package com.conduit.domain.usecase
 
 import com.conduit.data.musicbrainz.MusicBrainzClient
+import com.conduit.data.musicbrainz.MusicBrainzRecording
 import com.conduit.domain.model.*
 import com.conduit.domain.repository.SpotifyRepository
 import kotlinx.coroutines.delay
@@ -19,14 +20,14 @@ class BuildMoodProfileUseCase(
 
     suspend fun fromPlaylist(playlistId: String): MoodProfile {
         val tracks = spotifyRepo.getPlaylistTracks(playlistId)
-        val sample = tracks.filter { it.isrc != null }.take(50)
+        val sample = tracks.filter { it.isrc != null }.take(10)
 
         val allTags = mutableMapOf<String, Int>()
         val isrcs = mutableListOf<String>()
 
         sample.forEach { track ->
             delay(1_100)
-            val recording = track.isrc?.let { mbClient.getByIsrc(it) } ?: return@forEach
+            val recording = mbClient.getByIsrc(track.isrc!!) ?: return@forEach
             isrcs.add(track.isrc!!)
             recording.tags.forEach { tag ->
                 allTags[tag] = (allTags[tag] ?: 0) + 1
@@ -49,6 +50,14 @@ class BuildMoodProfileUseCase(
             ?: mbClient.searchByName(track.name, track.artist)
             ?: return MoodProfile(emptyMap(), emptyMap(), emptyList(), emptyList())
 
+        return buildProfileFromRecording(recording, listOfNotNull(track.isrc))
+    }
+
+    suspend fun fromRecording(recording: MusicBrainzRecording, isrc: String? = null): MoodProfile {
+        return buildProfileFromRecording(recording, listOfNotNull(isrc))
+    }
+
+    private suspend fun buildProfileFromRecording(recording: MusicBrainzRecording, isrcs: List<String>): MoodProfile {
         val relatedArtists = mbClient.getRelatedArtists(recording.artistMbid)
             .take(5)
             .map { it.mbid }
@@ -58,7 +67,7 @@ class BuildMoodProfileUseCase(
         return MoodProfile(
             genres = weights.filter { it.key in knownGenres },
             tags = weights.filter { it.key !in knownGenres },
-            seedIsrcs = listOfNotNull(track.isrc),
+            seedIsrcs = isrcs,
             relatedArtistMbids = relatedArtists,
         )
     }

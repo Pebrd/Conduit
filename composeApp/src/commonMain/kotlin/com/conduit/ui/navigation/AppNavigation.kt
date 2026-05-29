@@ -32,6 +32,7 @@ import com.conduit.ui.discover.DiscoverPlatformScreen
 import com.conduit.ui.discover.DiscoverScreen
 import com.conduit.ui.discover.DiscoverViewModel
 import com.conduit.ui.discover.DiscoverStep
+import com.conduit.domain.model.MusicService
 import org.koin.compose.viewmodel.koinViewModel
 import androidx.navigation.NavBackStackEntry
 
@@ -258,14 +259,23 @@ fun AppNavHost(navController: androidx.navigation.NavHostController) {
             val discoverViewModel: DiscoverViewModel = koinViewModel()
             val state by discoverViewModel.state.collectAsState()
 
+            // Stop audio whenever leaving Discover (back, nav away, etc.)
+            DisposableEffect(Unit) {
+                onDispose {
+                    discoverViewModel.reset()
+                }
+            }
+
             when (state.step) {
                 DiscoverStep.SEED -> DiscoverSeedScreen(
                     playlists = state.playlists,
                     isBuilding = state.isBuilding,
                     error = state.error,
+                    searchResults = state.searchResults,
+                    isSearching = state.isSearching,
                     onPlaylistSelected = { discoverViewModel.selectSeedPlaylist(it) },
                     onTrackSelected = { discoverViewModel.selectSeedTrack(it) },
-                    onSearch = { discoverViewModel.searchSpotifyTracks(it) },
+                    onSearchQueryChanged = { discoverViewModel.searchTracks(it) },
                     onBack = { navController.popBackStack() },
                 )
                 DiscoverStep.DESTINATION -> state.session?.let { session ->
@@ -284,10 +294,11 @@ fun AppNavHost(navController: androidx.navigation.NavHostController) {
                         queue = state.queue,
                         isPlaying = state.isPlaying,
                         sessionInfo = "basado en: ${session.destination.playlistName}",
-                        destinationInfo = "→ ${session.destination.playlistName} · ${session.destination.platform.name}",
+                        destinationInfo = if (session.destination.platform == MusicService.NONE) "Sin guardar" else "→ ${session.destination.playlistName} · ${session.destination.platform.name}",
                         onLike = { discoverViewModel.like(it) },
                         onSkip = { discoverViewModel.skip(it) },
                         onTogglePreview = { discoverViewModel.togglePreview(it) },
+                        onAutoPlay = { discoverViewModel.autoPlay(it) },
                         onDestinationClick = { /* show destination picker in future */ },
                         onBack = { discoverViewModel.reset() },
                         onFinish = { navController.popBackStack() },

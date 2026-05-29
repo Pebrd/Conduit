@@ -96,7 +96,7 @@ data class OAuthTokens(
     val userId: String? = null
 )
 
-enum class MusicService { SPOTIFY, TIDAL }
+enum class MusicService { SPOTIFY, TIDAL, NONE }
 enum class DiffStatus   { NEW, OK, MISSING, CONFLICT, REMOVED }
 enum class BlacklistScope { GLOBAL, PER_PLAYLIST }
 enum class MatchMethod  { ISRC, FuzzyHigh, AlbumMatch, ManualMapping }

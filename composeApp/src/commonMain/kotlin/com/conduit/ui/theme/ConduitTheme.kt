@@ -21,6 +21,7 @@ val OnSurfaceDim   = NoxTokens.ColorTextSecondary   // Muted gray
 val ErrorRed       = NoxTokens.ColorSemanticDanger
 val WarningYellow  = NoxTokens.ColorAccentYellow
 val SuccessGreen   = NoxTokens.ColorAccentDefault   // Steel default accent
+val AccentPurple   = NoxTokens.ColorAccentPurple    // Cool violet accent
 
 private val ColorScheme = darkColorScheme(
     background       = AmoledBlack,

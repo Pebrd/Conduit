@@ -14,12 +14,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.conduit.domain.model.DiscoverDestination
 import com.conduit.domain.model.MusicService
 import com.conduit.domain.model.Playlist
-import com.conduit.ui.theme.AmoledBlack
-import com.conduit.ui.theme.SurfaceVariant
+import com.conduit.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -37,13 +35,13 @@ fun DiscoverPlatformScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("DISCOVER", fontWeight = FontWeight.Bold) },
+                title = { Text("DISCOVER", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = OnSurface)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = AmoledBlack, titleContentColor = Color.White)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = AmoledBlack, titleContentColor = OnSurface)
             )
         },
         containerColor = AmoledBlack
@@ -53,47 +51,92 @@ fun DiscoverPlatformScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            Text("¿Dónde guardar los likes?", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Text(
+                "¿Dónde guardar los likes?",
+                style = MaterialTheme.typography.titleLarge,
+                color = OnSurface,
+            )
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 PlatformButton(
                     name = "SPOTIFY",
-                    color = Color(0xFF1DB954),
+                    color = AccentSage,
                     selected = destination.platform == MusicService.SPOTIFY,
                     onClick = { onPlatformChange(MusicService.SPOTIFY) },
                     modifier = Modifier.weight(1f)
                 )
                 PlatformButton(
                     name = "TIDAL",
-                    color = Color(0xFF00FFFF),
+                    color = AccentBlue,
                     selected = destination.platform == MusicService.TIDAL,
                     onClick = { onPlatformChange(MusicService.TIDAL) },
                     modifier = Modifier.weight(1f)
                 )
+                PlatformButton(
+                    name = "NINGUNO",
+                    color = OnSurfaceDim,
+                    selected = destination.platform == MusicService.NONE,
+                    onClick = { onPlatformChange(MusicService.NONE) },
+                    modifier = Modifier.weight(1f)
+                )
             }
 
-            Card(
-                modifier = Modifier.fillMaxWidth().clickable { showPlaylistPicker = true },
-                colors = CardDefaults.cardColors(containerColor = SurfaceVariant)
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
+            // Playlist picker card (hidden when NINGUNO)
+            if (destination.platform != MusicService.NONE) {
+                Card(
+                    modifier = Modifier.fillMaxWidth().clickable { showPlaylistPicker = true },
+                    shape = MaterialTheme.shapes.extraSmall,
+                    colors = CardDefaults.cardColors(containerColor = SurfaceVariant)
                 ) {
-                    Icon(Icons.Default.PlaylistAdd, contentDescription = null, tint = Color.White)
-                    Spacer(Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(destination.playlistName, color = Color.White, fontWeight = FontWeight.SemiBold)
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            if (destination.playlistId == null) Icons.Default.Add else Icons.Default.PlaylistAdd,
+                            contentDescription = null,
+                            tint = OnSurface
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                destination.playlistName,
+                                color = OnSurface,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                if (destination.playlistId == null) "Se creará una playlist nueva"
+                                else "Se agregará a playlist existente",
+                                color = OnSurfaceDim,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                        Icon(Icons.Default.Edit, contentDescription = "Cambiar", tint = OnSurfaceDim)
+                    }
+                }
+            } else {
+                // NINGUNO info card
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.extraSmall,
+                    colors = CardDefaults.cardColors(containerColor = SurfaceVariant)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Info, contentDescription = null, tint = OnSurfaceDim)
+                        Spacer(Modifier.width(12.dp))
                         Text(
-                            if (destination.playlistId == null) "Nueva playlist" else "Playlist existente",
-                            color = Color.Gray,
-                            fontSize = 12.sp
+                            "No se guardarán los likes",
+                            color = OnSurfaceDim,
+                            style = MaterialTheme.typography.bodyMedium,
                         )
                     }
-                    Icon(Icons.Default.Edit, contentDescription = "Change", tint = Color.Gray)
                 }
             }
 
@@ -102,7 +145,8 @@ fun DiscoverPlatformScreen(
             Button(
                 onClick = onConfirm,
                 modifier = Modifier.fillMaxWidth().height(56.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color.White),
+                shape = MaterialTheme.shapes.extraSmall,
+                colors = ButtonDefaults.buttonColors(containerColor = AccentSage),
             ) {
                 Text("EMPEZAR", color = AmoledBlack, fontWeight = FontWeight.Bold)
             }
@@ -129,13 +173,14 @@ private fun PlatformButton(name: String, color: Color, selected: Boolean, onClic
     Button(
         onClick = onClick,
         modifier = modifier.height(56.dp),
+        shape = MaterialTheme.shapes.extraSmall,
         colors = ButtonDefaults.buttonColors(
             containerColor = if (selected) color else SurfaceVariant
         )
     ) {
         Text(
             name,
-            color = if (selected) Color.Black else Color.White,
+            color = if (selected) AmoledBlack else OnSurface,
             fontWeight = FontWeight.Bold
         )
     }
@@ -151,26 +196,26 @@ private fun PlaylistPickerDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = SurfaceVariant,
-        title = { Text("Elegir playlist", color = Color.White) },
+        title = { Text("Elegir playlist", color = OnSurface) },
         text = {
             LazyColumn {
                 item {
                     TextButton(onClick = onCreateNew, modifier = Modifier.fillMaxWidth()) {
-                        Icon(Icons.Default.Add, contentDescription = null, tint = Color.White)
+                        Icon(Icons.Default.Add, contentDescription = null, tint = OnSurface)
                         Spacer(Modifier.width(8.dp))
-                        Text("Crear nueva", color = Color.White)
+                        Text("Crear nueva", color = OnSurface)
                     }
                 }
                 items(playlists) { playlist ->
                     TextButton(onClick = { onSelect(playlist) }, modifier = Modifier.fillMaxWidth()) {
-                        Text(playlist.name, color = Color.White)
+                        Text(playlist.name, color = OnSurface)
                     }
                 }
             }
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancelar", color = Color.Gray)
+                Text("Cancelar", color = OnSurfaceDim)
             }
         }
     )

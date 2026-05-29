@@ -12,6 +12,22 @@ class ITunesClient(private val client: HttpClient) {
 
     suspend fun searchPreview(query: String): ITunesResult? = search(query)
 
+    suspend fun searchTracks(query: String, limit: Int = 15): List<ITunesResult> {
+        return try {
+            val response = client.get("https://itunes.apple.com/search") {
+                parameter("term", query)
+                parameter("media", "music")
+                parameter("limit", limit)
+            }
+            if (!response.status.isSuccess()) return emptyList()
+            Json { ignoreUnknownKeys = true }
+                .parseToJsonElement(response.bodyAsText())
+                .jsonObject["results"]?.jsonArray
+                ?.mapNotNull { it.jsonObject?.let { obj -> parseResult(obj) } }
+                ?: emptyList()
+        } catch (_: Exception) { emptyList() }
+    }
+
     private suspend fun search(term: String): ITunesResult? {
         return try {
             val response = client.get("https://itunes.apple.com/search") {
@@ -34,7 +50,7 @@ class ITunesClient(private val client: HttpClient) {
         artistName = obj["artistName"]?.jsonPrimitive?.content ?: "",
         albumName  = obj["collectionName"]?.jsonPrimitive?.content ?: "",
         previewUrl = obj["previewUrl"]?.jsonPrimitive?.content,
-        artworkUrl = obj["artworkUrl100"]?.jsonPrimitive?.content,
+        artworkUrl = obj["artworkUrl100"]?.jsonPrimitive?.content?.replace("100x100bb", "600x600bb"),
         durationMs = obj["trackTimeMillis"]?.jsonPrimitive?.longOrNull ?: 0L,
     )
 }

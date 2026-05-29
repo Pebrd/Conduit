@@ -43,7 +43,7 @@ class AndroidOAuthHandler(
             .appendQueryParameter("client_id", clientId)
             .appendQueryParameter("response_type", "code")
             .appendQueryParameter("redirect_uri", redirectUri)
-            .appendQueryParameter("scope", "playlist-read-private playlist-read-collaborative user-library-read user-read-private user-read-email")
+            .appendQueryParameter("scope", "playlist-read-private playlist-read-collaborative user-library-read user-read-private user-read-email user-top-read user-read-recently-played")
             .appendQueryParameter("show_dialog", "true")
             .appendQueryParameter("state", state)
             .appendQueryParameter("code_challenge_method", "S256")
