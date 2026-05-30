@@ -93,9 +93,14 @@ android {
     signingConfigs {
         create("release") {
             storeFile = rootProject.file("conduit.keystore")
-            storePassword = "conduit123"
-            keyAlias = "conduit"
-            keyPassword = "conduit123"
+            storePassword = project.findProperty("KEYSTORE_STORE_PASSWORD") as? String
+                ?: System.getenv("KEYSTORE_STORE_PASSWORD")
+                ?: "conduit123"
+            keyAlias = project.findProperty("KEYSTORE_KEY_ALIAS") as? String
+                ?: "conduit"
+            keyPassword = project.findProperty("KEYSTORE_KEY_PASSWORD") as? String
+                ?: System.getenv("KEYSTORE_KEY_PASSWORD")
+                ?: "conduit123"
         }
     }
 
