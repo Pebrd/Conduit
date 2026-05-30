@@ -5,6 +5,10 @@ import com.conduit.data.itunes.ITunesClient
 import com.conduit.data.lastfm.LastFmClient
 import com.conduit.domain.model.*
 import com.conduit.domain.repository.SpotifyRepository
+import com.conduit.domain.util.TrackNormalizer.normalize
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 
 class FindCandidatesUseCase(
     private val spotifyRepo: SpotifyRepository,
@@ -32,13 +36,16 @@ class FindCandidatesUseCase(
 
         // Step 2: Use Last.fm track.getSimilar for recommendations
         val searchQueries = mutableListOf<Pair<String, String>>() // trackName, artistName
+        val matchScores = mutableMapOf<String, Double>() // normalized key -> match score
 
         if (lastFmClient.hasApiKey()) {
             for (seed in seedTracks) {
-                val similar = lastFmClient.getSimilarTracks(seed.name, seed.artist, limit = 5)
+                val similar = lastFmClient.getSimilarTracks(seed.name, seed.artist.split(",").first().trim(), limit = 5)
                 similar.forEach { rec ->
                     val recArtist = rec.artist?.name ?: return@forEach
                     if (rec.name.isNotBlank() && recArtist.isNotBlank()) {
+                        val scoreKey = normalize(rec.name, recArtist)
+                        matchScores[scoreKey] = rec.match.toDoubleOrNull() ?: 1.0
                         searchQueries.add(rec.name to recArtist)
                     }
                 }
@@ -61,16 +68,23 @@ class FindCandidatesUseCase(
             }
         }
 
-        // Step 4: Last resort — search by seed artist directly
+        // Step 4: Fallback — get recommendations via related artists
+        if (searchQueries.isEmpty() && artistName.isNotBlank()) {
+            try {
+                val related = spotifyRepo.getRecommendationsViaRelatedArtists(seedTrackIds, alreadySeen, limit)
+                for (track in related) {
+                    searchQueries.add(track.name to track.artist.split(",").first().trim())
+                }
+            } catch (_: Exception) { }
+        }
+
+        // Step 5: Last resort — search by seed artist directly
         if (searchQueries.isEmpty() && artistName.isNotBlank()) {
             searchQueries.add("" to artistName)
         }
 
-        // Step 5: Search each recommendation on Spotify with field-filtered query
+        // Step 6: Search each recommendation on Spotify with field-filtered query
         val tracks = mutableListOf<Track>()
-
-        fun normalize(t: Track): String =
-            "${t.name.lowercase().replace(Regex("""\s*\(.*?\)"""), "").replace(Regex("""\s*[–\-].*$"""), "").trim()} :: ${t.artist.lowercase().trim()}"
 
         for ((recTrackName, recArtist) in searchQueries) {
             if (tracks.size >= limit) break
@@ -92,7 +106,7 @@ class FindCandidatesUseCase(
             if (tracks.size >= limit) break
         }
 
-        // Step 6: If we got too few results, do a broader fallback search
+        // Step 7: If we got too few results, do a broader fallback search
         if (tracks.size < limit / 2 && artistName.isNotBlank()) {
             try {
                 val broadQuery = "artist:\"${artistName.replace("\"", "")}\""
@@ -107,19 +121,27 @@ class FindCandidatesUseCase(
             } catch (_: Exception) { }
         }
 
-        return tracks.map { track ->
-            val previewUrl = track.previewUrl ?: findITunesPreview(track)
-            DiscoverTrack(
-                mbid = track.id,
-                name = track.name,
-                artist = track.artist,
-                album = track.album,
-                durationMs = track.durationMs,
-                isrc = track.isrc,
-                previewUrl = previewUrl,
-                artworkUrl = track.imageUrl,
-                matchScore = 1.0,
-            )
+        return coroutineScope {
+            tracks.map { track ->
+                async {
+                    val previewUrl = track.previewUrl ?: findITunesPreview(track)
+                    val genres = track.artistIds.firstOrNull()?.let { artistId ->
+                        try { spotifyRepo.getArtistDetail(artistId)?.genres ?: emptyList() } catch (_: Exception) { emptyList() }
+                    } ?: emptyList()
+                    DiscoverTrack(
+                        mbid = track.id,
+                        name = track.name,
+                        artist = track.artist,
+                        album = track.album,
+                        durationMs = track.durationMs,
+                        isrc = track.isrc,
+                        previewUrl = previewUrl,
+                        artworkUrl = track.imageUrl,
+                        genres = genres,
+                        matchScore = matchScores[normalize(track)] ?: 1.0,
+                    )
+                }
+            }.awaitAll()
         }
     }
 

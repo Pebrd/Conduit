@@ -30,6 +30,7 @@ import kotlin.math.roundToInt
 fun DiscoverScreen(
     queue: List<DiscoverTrack>,
     isPlaying: Boolean,
+    isRefilling: Boolean,
     sessionInfo: String,
     destinationInfo: String,
     onLike: (DiscoverTrack) -> Unit,
@@ -72,17 +73,25 @@ fun DiscoverScreen(
                 modifier = Modifier.fillMaxSize().padding(padding),
                 contentAlignment = Alignment.Center
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("No hay más canciones", style = MaterialTheme.typography.titleLarge, color = OnSurfaceDim)
-                    Spacer(Modifier.height(8.dp))
-                    Text("Probá con otra semilla de mood", style = MaterialTheme.typography.bodySmall, color = OnSurfaceDim)
-                    Spacer(Modifier.height(24.dp))
-                    Button(
-                        onClick = onBack,
-                        shape = MaterialTheme.shapes.extraSmall,
-                        colors = ButtonDefaults.buttonColors(containerColor = SurfaceVariant)
-                    ) {
-                        Text("Volver a empezar", color = OnSurface)
+                if (isRefilling) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator(color = AccentSage)
+                        Spacer(Modifier.height(16.dp))
+                        Text("Buscando más canciones...", style = MaterialTheme.typography.titleLarge, color = OnSurfaceDim)
+                    }
+                } else {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("No hay más canciones", style = MaterialTheme.typography.titleLarge, color = OnSurfaceDim)
+                        Spacer(Modifier.height(8.dp))
+                        Text("Probá con otra semilla de mood", style = MaterialTheme.typography.bodySmall, color = OnSurfaceDim)
+                        Spacer(Modifier.height(24.dp))
+                        Button(
+                            onClick = onBack,
+                            shape = MaterialTheme.shapes.extraSmall,
+                            colors = ButtonDefaults.buttonColors(containerColor = SurfaceVariant)
+                        ) {
+                            Text("Volver a empezar", color = OnSurface)
+                        }
                     }
                 }
             }
@@ -101,15 +110,20 @@ fun DiscoverScreen(
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // ── Swipeable card ──
-                SwipeableCard(
-                    track = currentTrack,
-                    isPlaying = isPlaying,
-                    onLike = onLike,
-                    onSkip = onSkip,
-                    onTogglePreview = onTogglePreview,
+                // ── Swipeable card (constrained width on desktop) ──
+                Box(
                     modifier = Modifier.fillMaxWidth().weight(1f),
-                )
+                    contentAlignment = Alignment.Center
+                ) {
+                    SwipeableCard(
+                        track = currentTrack,
+                        isPlaying = isPlaying,
+                        onLike = onLike,
+                        onSkip = onSkip,
+                        onTogglePreview = onTogglePreview,
+                        modifier = Modifier.fillMaxHeight().widthIn(max = 450.dp),
+                    )
+                }
 
                 Spacer(Modifier.height(12.dp))
 

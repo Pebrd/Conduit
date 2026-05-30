@@ -293,6 +293,7 @@ fun AppNavHost(navController: androidx.navigation.NavHostController) {
                     DiscoverScreen(
                         queue = state.queue,
                         isPlaying = state.isPlaying,
+                        isRefilling = state.isRefilling,
                         sessionInfo = "basado en: ${session.destination.playlistName} · via ${session.recommendationSource}",
                         destinationInfo = if (session.destination.platform == MusicService.NONE) "Sin guardar" else "→ ${session.destination.playlistName} · ${session.destination.platform.name}",
                         onLike = { discoverViewModel.like(it) },

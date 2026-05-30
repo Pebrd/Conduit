@@ -6,12 +6,14 @@ import com.conduit.domain.repository.SpotifyRepository
 class BuildMoodProfileUseCase(
     private val spotifyRepo: SpotifyRepository,
 ) {
-    suspend fun fromTrack(track: Track): List<String> {
-        return listOf(track.id)
+    suspend fun fromTrack(track: Track): List<Track> {
+        return listOf(track)
     }
 
-    suspend fun fromPlaylist(playlistId: String): List<String> {
+    suspend fun fromPlaylist(playlistId: String): List<Track> {
         val tracks = spotifyRepo.getPlaylistTracks(playlistId)
-        return tracks.map { it.id }.take(5)
+        return tracks
+            .groupBy { it.artist }
+            .flatMap { (_, artistTracks) -> artistTracks.take(2) }
     }
 }

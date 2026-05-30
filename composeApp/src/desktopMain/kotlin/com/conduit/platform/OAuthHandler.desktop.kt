@@ -61,8 +61,51 @@ class DesktopOAuthHandler(
     }
 
     override suspend fun authenticateTidal(clientId: String, clientSecret: String?): OAuthTokens? {
-        // Obsoleto
-        return null
+        val state = UUID.randomUUID().toString()
+        val codeVerifier = generateCodeVerifier()
+        val codeChallenge = generateCodeChallenge(codeVerifier)
+        val redirectUri = "http://127.0.0.1:8889/tidal/callback"
+        val scopes = "user.read collection.read collection.write playlists.write"
+
+        val deferredCode = CompletableDeferred<String?>()
+
+        val server = try {
+            embeddedServer(Netty, port = 8889) {
+                routing {
+                    get("/tidal/callback") {
+                        val code = call.request.queryParameters["code"]
+                        val returnedState = call.request.queryParameters["state"]
+                        if (returnedState == state && code != null) {
+                            call.respondText("Autenticación exitosa. Puedes cerrar esta ventana.")
+                            deferredCode.complete(code)
+                        } else {
+                            call.respondText("Error de autenticación.")
+                            deferredCode.complete(null)
+                        }
+                    }
+                }
+            }.start(wait = false)
+        } catch (e: Exception) {
+            println("DEBUG TIDAL DESKTOP: No se pudo iniciar servidor callback en puerto 8889: ${e.message}")
+            return null
+        }
+
+        return try {
+            val encodedRedirectUri = URLEncoder.encode(redirectUri, "UTF-8")
+            val encodedScopes = URLEncoder.encode(scopes, "UTF-8")
+            val uri = "https://login.tidal.com/authorize?client_id=$clientId&response_type=code&redirect_uri=$encodedRedirectUri&scope=$encodedScopes&state=$state&code_challenge_method=S256&code_challenge=$codeChallenge"
+            try {
+                Desktop.getDesktop().browse(URI(uri))
+            } catch (e: Exception) {
+                println("DEBUG TIDAL DESKTOP: No se pudo abrir navegador: ${e.message}")
+                deferredCode.complete(null)
+            }
+
+            val code = deferredCode.await() ?: return null
+            oauthRepository.exchangeCodeForTidalTokens(clientId, null, code, codeVerifier, redirectUri)
+        } finally {
+            server.stop(1000, 1000)
+        }
     }
 
     override suspend fun getTidalDeviceCode(): TidalDeviceResponse? {
@@ -71,7 +114,16 @@ class DesktopOAuthHandler(
     }
 
     override fun openTidalBrowser(url: String) {
-        Desktop.getDesktop().browse(URI(url))
+        // Tidal's verification_uri_complete ya incluye https://,
+        // pero el ViewModel (commonMain) le antepone otro https://
+        // produciendo https://https://... -> lo corregimos acá sin tocar Android
+        val safeUrl = url.replace("https://https://", "https://")
+        try {
+            Desktop.getDesktop().browse(URI(safeUrl))
+        } catch (e: Exception) {
+            println("DEBUG TIDAL DESKTOP: Error abriendo navegador: ${e.message}")
+            e.printStackTrace()
+        }
     }
 
     private fun generateCodeVerifier(): String {

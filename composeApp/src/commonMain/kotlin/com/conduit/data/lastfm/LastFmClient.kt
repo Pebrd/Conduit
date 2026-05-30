@@ -31,7 +31,7 @@ class LastFmClient(
             val json = Json { ignoreUnknownKeys = true }
             json.decodeFromString<LastFmSimilarArtistsResponse>(response.bodyAsText())
                 .similarartists?.artist
-                ?.filter { it.match.toDoubleOrNull() ?: 0.0 > 0.3 }
+                ?.filter { it.match.toDoubleOrNull() ?: 0.0 > 0.5 }
                 ?: emptyList()
         } catch (_: Exception) { emptyList() }
     }
@@ -96,7 +96,7 @@ class LastFmClient(
             val json = Json { ignoreUnknownKeys = true }
             json.decodeFromString<LastFmSimilarTracksResponse>(response.bodyAsText())
                 .similartracks?.track
-                ?.filter { it.match.toDoubleOrNull() ?: 0.0 > 0.3 }
+                ?.filter { it.match.toDoubleOrNull() ?: 0.0 > 0.5 }
                 ?: emptyList()
         } catch (_: Exception) { emptyList() }
     }

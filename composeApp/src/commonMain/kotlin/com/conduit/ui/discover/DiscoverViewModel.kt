@@ -9,8 +9,12 @@ import com.conduit.data.local.SettingsStorage
 import com.conduit.domain.model.*
 import com.conduit.domain.repository.SpotifyRepository
 import com.conduit.domain.usecase.*
+import com.conduit.domain.util.TrackNormalizer
 import com.conduit.platform.AudioPreviewPlayer
 import kotlinx.coroutines.Job
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -32,6 +36,8 @@ data class DiscoverUiState(
     val isBuilding: Boolean = false,
     val isPlaying: Boolean = false,
     val error: String? = null,
+    val skippedArtists: Set<String> = emptySet(),
+    val isRefilling: Boolean = false,
 )
 
 // ── ViewModel ──
@@ -53,6 +59,7 @@ class DiscoverViewModel(
     private var searchJob: Job? = null
     private var preloadJob: Job? = null
     private var cachedCandidates: List<DiscoverTrack>? = null
+    private var currentSeedKey: String? = null
 
     init {
         lastFmClient.setApiKey(settingsStorage.lastfmApiKey)
@@ -111,13 +118,21 @@ class DiscoverViewModel(
         viewModelScope.launch {
             _state.update { it.copy(isBuilding = true, error = null) }
             try {
-                val seedTrackIds = buildMoodProfile.fromTrack(track)
+                val seedTracks = buildMoodProfile.fromTrack(track)
+                val seedTrackIds = seedTracks.map { it.id }
                 val playlistName = generatePlaylistName(DiscoverSeed.FromTrack(
                     trackId = track.id,
                     trackName = track.name,
                     artist = track.artist,
                     isrc = track.isrc,
                 ))
+                // Load persisted seen track IDs for this seed
+                currentSeedKey = "discover_seen_track_${track.id}"
+                val persistedIds = settingsStorage.getString(currentSeedKey!!)
+                val persistedSet = if (persistedIds != null) {
+                    try { Json.decodeFromString<List<String>>(persistedIds).toSet() } catch (_: Exception) { emptySet() }
+                } else emptySet()
+
                 val recSource = if (lastFmClient.hasApiKey()) "Last.fm" else "Deezer"
                 val session = DiscoverSession(
                     seed = DiscoverSeed.FromTrack(track.id, track.name, track.artist, track.isrc),
@@ -129,7 +144,7 @@ class DiscoverViewModel(
                     seedTrackIds = seedTrackIds,
                     seedArtistName = track.artist.split(",").first().trim(),
                     recommendationSource = recSource,
-                    seenTrackIds = seedTrackIds.toSet(),
+                    seenTrackIds = seedTrackIds.toSet() + persistedSet,
                 )
                 _state.update {
                     it.copy(session = session, isBuilding = false, step = DiscoverStep.DESTINATION)
@@ -145,10 +160,16 @@ class DiscoverViewModel(
         viewModelScope.launch {
             _state.update { it.copy(isBuilding = true, error = null) }
             try {
-                val seedTrackIds = buildMoodProfile.fromPlaylist(playlist.id)
-                val firstArtist = seedTrackIds.firstOrNull()?.let { id ->
-                    try { spotifyRepo.searchTracksByQuery(id).firstOrNull()?.artist?.split(",")?.first()?.trim() } catch (_: Exception) { null }
-                } ?: ""
+                val seedTracks = buildMoodProfile.fromPlaylist(playlist.id)
+                val seedTrackIds = seedTracks.map { it.id }
+                val firstArtist = seedTracks.firstOrNull()?.artist?.split(",")?.first()?.trim() ?: ""
+                // Load persisted seen track IDs for this seed
+                currentSeedKey = "discover_seen_playlist_${playlist.id}"
+                val persistedIds = settingsStorage.getString(currentSeedKey!!)
+                val persistedSet = if (persistedIds != null) {
+                    try { Json.decodeFromString<List<String>>(persistedIds).toSet() } catch (_: Exception) { emptySet() }
+                } else emptySet()
+
                 val recSource = if (lastFmClient.hasApiKey()) "Last.fm" else "Deezer"
                 val session = DiscoverSession(
                     seed = DiscoverSeed.FromPlaylist(playlist.id, playlist.name, playlist.imageUrl),
@@ -160,7 +181,7 @@ class DiscoverViewModel(
                     seedTrackIds = seedTrackIds,
                     seedArtistName = firstArtist,
                     recommendationSource = recSource,
-                    seenTrackIds = seedTrackIds.toSet(),
+                    seenTrackIds = seedTrackIds.toSet() + persistedSet,
                 )
                 _state.update {
                     it.copy(session = session, isBuilding = false, step = DiscoverStep.DESTINATION)
@@ -216,20 +237,47 @@ class DiscoverViewModel(
         val session = _state.value.session ?: return
 
         if (session.destination.playlistId != null) {
-            // Destination is an existing playlist — fetch its tracks to exclude them
+            // Destination is an existing playlist — run getPlaylistTracks AND findCandidates in parallel
             viewModelScope.launch {
                 _state.update { it.copy(isBuilding = true) }
                 try {
-                    val existingTracks = spotifyRepo.getPlaylistTracks(session.destination.playlistId)
+                    val existingTracksDeferred = async {
+                        spotifyRepo.getPlaylistTracks(session.destination.playlistId!!)
+                    }
+                    val candidatesDeferred = async {
+                        findCandidates.invoke(
+                            session.seedTrackIds,
+                            session.seedArtistName,
+                            session.seenTrackIds,
+                            alreadySeenNames = session.seenTrackNames,
+                        )
+                    }
+
+                    val existingTracks = existingTracksDeferred.await()
                     val existingIds = existingTracks.map { it.id }.toSet()
-                    val existingNames = existingTracks.map { t ->
-                        "${t.name.lowercase().replace(Regex("""\s*\(.*?\)"""), "").replace(Regex("""\s*[–\-].*$"""), "").trim()} :: ${t.artist.lowercase().trim()}"
-                    }.toSet()
+                    val existingNames = existingTracks.map { TrackNormalizer.normalize(it) }.toSet()
+                    val updatedSeenIds = session.seenTrackIds + existingIds
+                    val updatedSeenNames = session.seenTrackNames + existingNames
+
+                    val candidates = candidatesDeferred.await()
+                    val skipped = _state.value.skippedArtists
+                    val filtered = candidates
+                        .filter { it.mbid !in updatedSeenIds }
+                        .filter { it.artist.lowercase().trim() !in skipped }
+
                     val updatedSession = session.copy(
-                        seenTrackIds = session.seenTrackIds + existingIds,
-                        seenTrackNames = session.seenTrackNames + existingNames,
+                        seenTrackIds = updatedSeenIds,
+                        seenTrackNames = updatedSeenNames,
                     )
-                    startSwiping(updatedSession)
+
+                    _state.update {
+                        it.copy(
+                            session = updatedSession,
+                            queue = filtered,
+                            isBuilding = false,
+                            step = DiscoverStep.SWIPE,
+                        )
+                    }
                 } catch (_: Exception) {
                     startSwiping(session)
                 }
@@ -261,10 +309,12 @@ class DiscoverViewModel(
         viewModelScope.launch {
             try {
                 val candidates = findCandidates.invoke(session.seedTrackIds, session.seedArtistName, session.seenTrackIds, alreadySeenNames = session.seenTrackNames)
+                val skipped = _state.value.skippedArtists
+                val filtered = candidates.filter { it.artist.lowercase().trim() !in skipped }
                 _state.update {
                     it.copy(
                         session = session,
-                        queue = candidates,
+                        queue = filtered,
                         isBuilding = false,
                         step = DiscoverStep.SWIPE,
                     )
@@ -304,24 +354,38 @@ class DiscoverViewModel(
     }
 
     fun skip(track: DiscoverTrack) {
+        _state.update { it.copy(skippedArtists = it.skippedArtists + track.artist.lowercase().trim()) }
         nextCard(track, liked = false)
     }
 
     private fun nextCard(track: DiscoverTrack, liked: Boolean) {
         audioPlayer.stop()
+        val normalizedName = TrackNormalizer.normalize(track)
+        val prevSession = _state.value.session
+        val newSeen = (prevSession?.seenTrackIds ?: emptySet()) + track.mbid
+        val newSeenNames = (prevSession?.seenTrackNames ?: emptySet()) + normalizedName
+        val newLiked = if (liked) (prevSession?.likedTracks ?: emptyList()) + track else (prevSession?.likedTracks ?: emptyList())
+        val newQueue = _state.value.queue.drop(1)
+
+        // Trigger refill BEFORE state update if running low
+        val currentSize = _state.value.queue.size
+        if (currentSize <= 11 && currentSize > 0) {
+            viewModelScope.launch { refillQueue() }
+        }
+
         _state.update { current ->
-            val normalizedName = "${track.name.lowercase().replace(Regex("""\s*\(.*?\)"""), "").replace(Regex("""\s*[–\-].*$"""), "").trim()} :: ${track.artist.lowercase().trim()}"
-            val newSeen = current.session?.seenTrackIds?.plus(track.mbid) ?: setOf(track.mbid)
-            val newSeenNames = current.session?.seenTrackNames?.plus(normalizedName) ?: setOf(normalizedName)
-            val newLiked = if (liked) (current.session?.likedTracks?.plus(track) ?: listOf(track)) else (current.session?.likedTracks ?: emptyList())
-            val newQueue = current.queue.drop(1)
-
-            if (newQueue.size < 5) viewModelScope.launch { refillQueue() }
-
             current.copy(
-                session = current.session?.copy(seenTrackIds = newSeen, seenTrackNames = newSeenNames, likedTracks = newLiked),
+                session = current.session?.copy(
+                    seenTrackIds = newSeen,
+                    seenTrackNames = newSeenNames,
+                    likedTracks = newLiked,
+                ),
                 queue = newQueue,
             )
+        }
+
+        currentSeedKey?.let { key ->
+            settingsStorage.putString(key, Json.encodeToString(newSeen.toList()))
         }
     }
 
@@ -343,12 +407,18 @@ class DiscoverViewModel(
     private suspend fun refillQueue() {
         val session = _state.value.session ?: return
         if (session.seedTrackIds.isEmpty()) return
-        // Include up to 5 most recently liked tracks as additional seeds for better recs
-        val likedSeeds = session.likedTracks.takeLast(5).map { it.mbid }
-        val allSeeds = session.seedTrackIds + likedSeeds
-        val more = findCandidates.refill(allSeeds, session.seedArtistName, session.seenTrackIds, alreadySeenNames = session.seenTrackNames, limit = 20)
-        _state.update { current ->
-            current.copy(queue = current.queue + more)
+        _state.update { it.copy(isRefilling = true) }
+        try {
+            // Include up to 5 most recently liked tracks as additional seeds for better recs
+            val likedSeeds = session.likedTracks.takeLast(5).map { it.mbid }
+            val allSeeds = session.seedTrackIds + likedSeeds
+            val more = findCandidates.refill(allSeeds, session.seedArtistName, session.seenTrackIds, alreadySeenNames = session.seenTrackNames, limit = 20)
+            _state.update { current ->
+                val filteredMore = more.filter { it.artist.lowercase().trim() !in current.skippedArtists }
+                current.copy(queue = current.queue + filteredMore, isRefilling = false)
+            }
+        } catch (_: Exception) {
+            _state.update { it.copy(isRefilling = false) }
         }
     }
 }

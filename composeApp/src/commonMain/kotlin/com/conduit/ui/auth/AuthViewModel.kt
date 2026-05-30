@@ -94,8 +94,13 @@ class AuthViewModel(
             
             val clientId = settingsStorage.tidalClientId.takeIf { it.isNotBlank() } ?: "V5HLp4iLaNh41xvj"
             
-            // Intentamos primero Device Flow que es lo más fiable
-            val deviceResponse = oAuthRepository.getTidalDeviceCode(clientId)
+            // Intentamos primero Device Flow (puede fallar si el client_id no lo soporta)
+            val deviceResponse = try {
+                oAuthRepository.getTidalDeviceCode(clientId)
+            } catch (e: Exception) {
+                println("DEBUG TIDAL: Device flow error: ${e.message}")
+                null
+            }
             if (deviceResponse != null) {
                 _state.update { 
                     it.copy(
