@@ -13,18 +13,18 @@ class DeezerClient(
         artistName: String,
         artistsLimit: Int = 5,
         tracksPerArtist: Int = 5,
-    ): List<String> {
+    ): List<Pair<String, String>> {
         if (artistName.isBlank()) return emptyList()
 
         return try {
             val artistId = searchArtist(artistName) ?: return emptyList()
             val related = getRelatedArtists(artistId, artistsLimit)
-            val queries = mutableListOf<String>()
+            val queries = mutableListOf<Pair<String, String>>()
 
             related.forEach { artist ->
                 val topTracks = getTopTracks(artist.id, tracksPerArtist)
                 topTracks.forEach { track ->
-                    queries.add("${track.title} ${artist.name}")
+                    queries.add(track.title to artist.name)
                 }
             }
 

@@ -10,4 +10,9 @@ object TrackNormalizer {
     fun normalize(track: Track): String = normalize(track.name, track.artist)
 
     fun normalize(track: DiscoverTrack): String = normalize(track.name, track.artist)
+
+    fun cleanTrackNameForLastFm(name: String): String =
+        name.replace(Regex("""\s*\(.*?\)"""), "")
+            .replace(Regex("""\s*[–\-]\s+.*$"""), "")
+            .trim()
 }

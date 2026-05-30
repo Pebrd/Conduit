@@ -1,5 +1,8 @@
 package com.conduit.ui.discover
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
@@ -19,8 +22,6 @@ import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.conduit.domain.model.DiscoverTrack
 import com.conduit.ui.theme.*
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -31,6 +32,7 @@ fun DiscoverScreen(
     queue: List<DiscoverTrack>,
     isPlaying: Boolean,
     isRefilling: Boolean,
+    error: String? = null,
     sessionInfo: String,
     destinationInfo: String,
     onLike: (DiscoverTrack) -> Unit,
@@ -68,6 +70,29 @@ fun DiscoverScreen(
         },
         containerColor = AmoledBlack
     ) { padding ->
+        // ── Error banner ──
+        error?.let { msg ->
+            Box(
+                modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
+                contentAlignment = Alignment.TopCenter
+            ) {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = ErrorRed.copy(alpha = 0.15f)),
+                    shape = MaterialTheme.shapes.small,
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Default.Warning, contentDescription = null, tint = ErrorRed, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(msg, style = MaterialTheme.typography.bodySmall, color = ErrorRed)
+                    }
+                }
+            }
+            return@Scaffold
+        }
+
         if (queue.isEmpty()) {
             Box(
                 modifier = Modifier.fillMaxSize().padding(padding),
@@ -136,7 +161,7 @@ fun DiscoverScreen(
     }
 }
 
-// ── Swipeable card with drag gesture ──
+// ── Swipeable card with spring-animated drag gesture ──
 
 private const val SWIPE_THRESHOLD = 0.4f
 
@@ -150,30 +175,44 @@ private fun SwipeableCard(
     modifier: Modifier = Modifier,
 ) {
     val scope = rememberCoroutineScope()
-
-    // Drag offset as fraction of card width (0 = center, 1 = full right, -1 = full left)
-    var dragFraction by remember { mutableStateOf(0f) }
-
-    // Track if we've triggered action for this drag gesture
+    val dragAnim = remember { Animatable(0f) }
     var actionTriggered by remember { mutableStateOf(false) }
+    val dragFraction by dragAnim.asState()
 
-    // The like/skip action is dispatched with a short delay after threshold crossed
-    // so the card animates off first
+    var cardWidth by remember { mutableStateOf(0f) }
+
     fun commitAction(direction: Float) {
         if (actionTriggered) return
         actionTriggered = true
-        // Snap card fully off-screen and dispatch immediately
-        dragFraction = if (direction > 0) 1.5f else -1.5f
-        if (direction > 0) onLike(track) else onSkip(track)
+        scope.launch {
+            dragAnim.animateTo(
+                targetValue = if (direction > 0) 1.5f else -1.5f,
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness = Spring.StiffnessMedium
+                )
+            )
+            if (direction > 0) onLike(track) else onSkip(track)
+        }
+    }
+
+    fun snapBack() {
+        scope.launch {
+            dragAnim.animateTo(
+                targetValue = 0f,
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness = Spring.StiffnessLow
+                )
+            )
+        }
     }
 
     // Reset when track changes
     LaunchedEffect(track.mbid) {
-        dragFraction = 0f
+        dragAnim.snapTo(0f)
         actionTriggered = false
     }
-
-    var cardWidth by remember { mutableStateOf(0f) }
 
     Box(
         modifier = modifier
@@ -214,7 +253,7 @@ private fun SwipeableCard(
             }
         }
 
-        // ── Card ──
+        // ── Card with spring-animated drag ──
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -222,24 +261,19 @@ private fun SwipeableCard(
                 .pointerInput(track.mbid) {
                     detectHorizontalDragGestures(
                         onDragEnd = {
-                            // If past threshold, commit action
-                            if (abs(dragFraction) >= SWIPE_THRESHOLD && !actionTriggered) {
-                                commitAction(dragFraction)
-                            } else {
-                                // Snap back
-                                scope.launch {
-                                    delay(10)
-                                    dragFraction = 0f
-                                }
+                            if (!actionTriggered) {
+                                snapBack()
                             }
                         },
                         onHorizontalDrag = { _, dragAmount ->
-                            val newFrac = dragFraction + dragAmount / cardWidth
-                            dragFraction = newFrac.coerceIn(-1f, 1f)
-
-                            // Auto-commit if past threshold
-                            if (abs(dragFraction) >= SWIPE_THRESHOLD) {
-                                commitAction(dragFraction)
+                            if (actionTriggered) return@detectHorizontalDragGestures
+                            val newFrac = (dragAnim.value + dragAmount / cardWidth)
+                                .coerceIn(-1f, 1f)
+                            scope.launch {
+                                dragAnim.snapTo(newFrac)
+                            }
+                            if (abs(newFrac) >= SWIPE_THRESHOLD) {
+                                commitAction(newFrac)
                             }
                         }
                     )

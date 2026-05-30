@@ -2,6 +2,7 @@ package com.conduit.ui.discover
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.conduit.data.http.RateLimitException
 import com.conduit.data.itunes.ITunesClient
 import com.conduit.data.itunes.toTrack
 import com.conduit.data.lastfm.LastFmClient
@@ -161,8 +162,11 @@ class DiscoverViewModel(
             _state.update { it.copy(isBuilding = true, error = null) }
             try {
                 val seedTracks = buildMoodProfile.fromPlaylist(playlist.id)
+                println("[Conduit] DiscoverVM: fromPlaylist returned ${seedTracks.size} tracks")
                 val seedTrackIds = seedTracks.map { it.id }
+                println("[Conduit] DiscoverVM: seedTrackIds=${seedTrackIds.take(5)}...")
                 val firstArtist = seedTracks.firstOrNull()?.artist?.split(",")?.first()?.trim() ?: ""
+                println("[Conduit] DiscoverVM: firstArtist='$firstArtist'")
                 // Load persisted seen track IDs for this seed
                 currentSeedKey = "discover_seen_playlist_${playlist.id}"
                 val persistedIds = settingsStorage.getString(currentSeedKey!!)
@@ -201,9 +205,12 @@ class DiscoverViewModel(
         preloadJob = viewModelScope.launch {
             try {
                 val candidates = findCandidates.invoke(session.seedTrackIds, session.seedArtistName, session.seenTrackIds, alreadySeenNames = session.seenTrackNames)
+                println("[Conduit] DiscoverVM: preloadCandidates returned ${candidates.size} tracks")
                 cachedCandidates = candidates
             } catch (ce: kotlinx.coroutines.CancellationException) {
                 throw ce
+            } catch (e: RateLimitException) {
+                _state.update { it.copy(error = "Límite de API alcanzado: ${e.message}. Esperá un minuto y volvé a intentar.") }
             } catch (_: Exception) { }
         }
     }
@@ -409,7 +416,6 @@ class DiscoverViewModel(
         if (session.seedTrackIds.isEmpty()) return
         _state.update { it.copy(isRefilling = true) }
         try {
-            // Include up to 5 most recently liked tracks as additional seeds for better recs
             val likedSeeds = session.likedTracks.takeLast(5).map { it.mbid }
             val allSeeds = session.seedTrackIds + likedSeeds
             val more = findCandidates.refill(allSeeds, session.seedArtistName, session.seenTrackIds, alreadySeenNames = session.seenTrackNames, limit = 20)
@@ -417,6 +423,8 @@ class DiscoverViewModel(
                 val filteredMore = more.filter { it.artist.lowercase().trim() !in current.skippedArtists }
                 current.copy(queue = current.queue + filteredMore, isRefilling = false)
             }
+        } catch (e: RateLimitException) {
+            _state.update { it.copy(isRefilling = false, error = "Límite de API alcanzado al buscar más canciones. Esperá un minuto.") }
         } catch (_: Exception) {
             _state.update { it.copy(isRefilling = false) }
         }
